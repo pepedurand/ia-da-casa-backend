@@ -3,10 +3,10 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 import { DatabaseModule } from './database/database.module';
-import { RagModule } from './models/rag/rag.module';
+import { IaModule } from './models/ia/ia.module';
 
 @Module({
-  imports: [DatabaseModule, RagModule],
+  imports: [DatabaseModule, IaModule],
   controllers: [AppController],
   providers: [AppService],
 })
