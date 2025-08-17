@@ -113,22 +113,7 @@ export class IaService {
 
       await this.waitForRunCompletion(threadId, run.id);
 
-      const messages: any = await this.openai.request({
-        method: 'get',
-        path: `/threads/${threadId}/messages`,
-        query: { limit: 1, order: 'desc' },
-        headers: { 'OpenAI-Beta': 'assistants=v2' },
-      });
-
-      const lastMessage = messages.data?.[0];
-      let reply = '';
-      if (lastMessage && lastMessage.role === 'assistant') {
-        for (const content of lastMessage.content ?? []) {
-          if (content.type === 'text') {
-            reply += content.text?.value ?? '';
-          }
-        }
-      }
+      const reply = await this.fetchLastAssistantMessage(threadId);
 
       return {
         reply,
