@@ -27,11 +27,11 @@ export class UsuarioService {
   }
 
   public async findByEmail(email: string): Promise<Usuario> {
-    const usuario = await this.usuarioRepository.findOne({
-      where: {
-        email,
-      },
-    });
+    const usuario = await this.usuarioRepository
+      .createQueryBuilder('usuario')
+      .addSelect('usuario.senha')
+      .where('usuario.email = :email', { email })
+      .getOne();
 
     if (!usuario) {
       throw new BadRequestException('Usuário não encontrado');
@@ -42,14 +42,26 @@ export class UsuarioService {
 
   async create(body: CreateUsuarioDto): Promise<Usuario> {
     try {
+      const existingUser = await this.usuarioRepository.findOne({
+        where: { email: body.email },
+      });
+      if (existingUser) {
+        throw new BadRequestException(
+          'Já existe um usuário cadastrado com este email',
+        );
+      }
+
       const senha = await argon2.hash(body.senha);
 
-      const createdUser = await this.usuarioRepository.save({ ...body, senha });
+      const createdUser = await this.usuarioRepository.save({
+        ...body,
+        senha,
+      });
 
       return createdUser;
     } catch (e) {
       console.log(e);
-      throw new BadRequestException('Erro ao cadastrar usuário');
+      throw new BadRequestException(e.message || 'Erro ao cadastrar usuário');
     }
   }
 }

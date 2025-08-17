@@ -18,13 +18,13 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "typeorm": "node --require ts-node/register --require tsconfig-paths/register ./node_modules/typeorm/cli.js -d src/database/config/data-source.ts",
-    "typeorm:nods": "node --require ts-node/register --require tsconfig-paths/register ./node_modules/typeorm/cli.js",
-    "migration:create": "sh -c 'npm run typeorm:nods -- migration:create src/database/migrations/$1' --",
-    "migration:generate": "sh -c 'npm run typeorm -- migration:generate src/database/migrations/$1' --",
+    "typeorm": "node --require ts-node/register --require tsconfig-paths/register ./node_modules/typeorm/cli.js -d ./src/database/config/orm.config.ts",
+    "typeorm:nods": "node --loader ts-node/esm ./node_modules/typeorm/cli.js",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
-    "migration:show": "npm run typeorm -- migration:show"
+    "migration:show": "npm run typeorm -- migration:show",
+    "migration:create": "sh -c 'npm run typeorm:nods -- migration:create src/database/migrations/$1' --",
+    "migration:generate": "npm run typeorm -- migration:generate"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -36,7 +36,6 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/typeorm": "^11.0.0",
     "argon2": "^0.44.0",
-    "cache-manager-redis-yet": "^5.1.5",
     "dotenv": "^17.2.1",
     "openai": "^5.12.2",
     "passport-jwt": "^4.0.1",

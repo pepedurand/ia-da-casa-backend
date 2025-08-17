@@ -43,11 +43,6 @@ export class CreateUsuarioDto {
   )
   senha: string;
 
-  @IsNotEmpty({
-    message: 'confirmarSenha é obrigatório',
-  })
-  confirmarSenha: string;
-
   @IsOptional()
   @Length(0, 254)
   refreshToken?: string;
