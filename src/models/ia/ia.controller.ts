@@ -17,7 +17,10 @@ export class IaController {
 
   @UseGuards(JwtAuthGuard)
   @Post('chat')
-  async chatWithAgent(@Request() req, @Body() body: ChatBody): Promise<any> {
+  async chatWithAgent(
+    @Request() req,
+    @Body() body: ChatBody,
+  ): Promise<ChatResponse> {
     try {
       return this.iaService.chat(body, req.user.id);
     } catch (e) {

@@ -31,7 +31,7 @@ export class IaService {
     this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
-  async chat(chatData: ChatBody, userId: string): Promise<any> {
+  async chat(chatData: ChatBody, userId: string): Promise<ChatResponse> {
     const {
       agentId,
       prompt,
@@ -113,7 +113,7 @@ export class IaService {
 
       await this.waitForRunCompletion(threadId, run.id);
 
-      const reply = await this.fetchLastAssistantMessage(threadId);
+      const reply = (await this.fetchLastAssistantMessage(threadId)) ?? '';
 
       return {
         reply,
