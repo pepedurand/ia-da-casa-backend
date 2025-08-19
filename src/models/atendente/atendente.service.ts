@@ -2,9 +2,11 @@ import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ResponseInput, Tool } from 'openai/resources/responses/responses';
 
+const BUSINESS_TZ = process.env.BUSINESS_TZ || 'America/Sao_Paulo';
+
 // Novo tipo de funcionamento
 type FuncSlot = { abre: string; fecha: string };
-type Evento = { name: string; dias: number[]; abre: string; fecha: string };
+type Evento = { names: string[]; dias: number[]; abre: string; fecha: string };
 
 export const FUNCIONAMENTO: Record<number, FuncSlot[]> = {
   0: [
@@ -26,37 +28,75 @@ export const FUNCIONAMENTO: Record<number, FuncSlot[]> = {
 };
 
 export const EVENTOS: Evento[] = [
-  { name: 'Café da manhã', dias: [0, 6], abre: '10:00', fecha: '13:00' },
   {
-    name: 'Menu executivo',
+    names: ['Café da manhã', 'café', 'breakfast'],
+    dias: [0, 6],
+    abre: '10:00',
+    fecha: '13:00',
+  },
+  {
+    names: ['Menu executivo', 'executivo', 'prato do dia', 'almoço executivo'],
     dias: [1, 2, 3, 4, 5],
     abre: '12:00',
     fecha: '16:00',
   },
-  { name: 'Fondue da Glória', dias: [3, 4, 5], abre: '19:00', fecha: '23:00' },
-  { name: 'Música ao vivo', dias: [5], abre: '19:00', fecha: '23:00' },
-  { name: 'Jantar', dias: [3, 4, 5, 6], abre: '18:00', fecha: '23:00' },
-  { name: 'Almoço e jantar', dias: [6], abre: '13:00', fecha: '23:00' },
+  {
+    names: ['Fondue da Glória', 'fondue', 'fundue', 'fondue da casa'],
+    dias: [3, 4, 5],
+    abre: '19:00',
+    fecha: '23:00',
+  },
+  {
+    names: ['Música ao vivo', 'música', 'show', 'som ao vivo'],
+    dias: [5],
+    abre: '19:00',
+    fecha: '23:00',
+  },
+  {
+    names: ['Jantar', 'dinner', 'refeição noturna'],
+    dias: [3, 4, 5, 6],
+    abre: '18:00',
+    fecha: '23:00',
+  },
+  {
+    names: ['Almoço e jantar', 'almoço', 'lunch'],
+    dias: [6],
+    abre: '13:00',
+    fecha: '23:00',
+  },
 ];
 
 const SYSTEM_INSTRUCTIONS = `
-Você é uma atendente simpática e prestativa de um restaurante. Use sempre as funções disponíveis para responder com precisão.
+Você é uma atendente simpática e prestativa do restaurante Bistrô da Casa. Use sempre as funções disponíveis para responder com precisão.
 
 Nunca invente informações sobre horários ou eventos. Utilize as funções corretamente.
+Sempre cumprimente o cliente com alegria, com um "Olá!" ou "Obrigado pelo contato".
+Evite responder em tópicos, prefira frases.
+Ao ser referir a eventos ou horário, prefira o termo programação.
+Pergunte se precisar de mais informações.
+Evite dizer que estamos fechados.
 
 ### Quando usar as funções:
 
-- **get_open_status(isoDatetime)**:
-  - Quando o cliente pergunta se o restaurante está aberto agora ou qual o horário de funcionamento hoje.
+- **get_open_status**: Use quando perguntarem “vocês estão abertos agora?” ou “qual o horário hoje?”. 
+  Responda se está aberto, a próxima abertura/fechamento e a programação de hoje.
 
 - **get_evento_info(nomeEvento)**:
   - Quando o cliente pergunta sobre um evento específico, como "quando tem fondue?", "tem música ao vivo?", "tem menu executivo?", "tem café da manhã?", "tem almoço ou jantar?".
   - Mesmo que o cliente use palavras genéricas como "vocês têm executivo?", "tem fondue hoje?", "e jantar?", "servem almoço?", chame a função passando o nome do evento citado.
   - Sempre que uma pergunta citar algo do tipo: fondue, música ao vivo, menu executivo, café da manhã, almoço, jantar — chame "get_evento_info".
 
-- **get_programacao(dias)**:
-  - Quando perguntarem algo como "qual a programação do fim de semana?", "tem algo hoje?", "o que acontece amanhã?", "tem evento no sábado ou domingo?", etc.
-  - Chame essa função para montar uma resposta com os eventos e horários dos dias mencionados (ou todos se não forem especificados).
+- **get_programacao(dias)**: Use quando perguntarem “que horas vocês abrem?”, “qual o horário de funcionamento?”, 
+  ou qualquer pergunta genérica sobre abertura/fechamento sem referência a “hoje” ou “agora”. 
+  Nesse caso, mostre a programação completa da semana (funcionamento + eventos).
+  - Quando houver "observacoes.destaquesNoite", destaque em frase única os dois marcos: 
+  “a partir das {inicio} servimos o cardápio completo (jantar); e a partir das {inicio} também o Fondue da Glória.”
+
+
+- **Sobre "amanhã"**:  
+  Se o cliente perguntar algo como “que horas vocês abrem amanhã?” ou “qual a programação de amanhã?”, 
+  você deve calcular o dia real de amanhã (new Date().getDay() + 1) e chamar "get_programacao" passando esse dia da semana.  
+  Nunca presuma o dia de amanhã, sempre use a data real atual como referência.
 
 ### Como responder:
 
@@ -70,11 +110,12 @@ Nunca invente informações sobre horários ou eventos. Utilize as funções cor
 **Você**: Temos sim! O Menu Executivo é servido de segunda a sexta, das 12h às 16h. Uma ótima opção para o almoço! 😋
 
 **Cliente**: "Qual a programação do fim de semana?"  
-**Você**: Neste fim de semana temos:
-- Sábado: Café da manhã das 10h às 13h, almoço e jantar das 13h às 23h.
-- Domingo: Café da manhã das 10h às 13h e almoço das 13h às 18h.
+**Você**: Neste fim de semana temos:  
+Sábado: Café da manhã das 10h às 13h, almoço e jantar das 13h às 23h.  
+Domingo: Café da manhã das 10h às 13h e almoço das 13h às 18h.  
 
-Posso reservar uma mesa para você? 😊
+**Cliente**: "Que horas vocês abrem amanhã?"  
+**Você**: Amanhã, quarta-feira, abrimos das 12h às 15h e depois das 18h às 23h, com nosso fondue da Glória no jantar.  
 `.trim();
 
 enum toolTypes {
@@ -181,7 +222,7 @@ export class AtendenteService {
     );
     switch (name) {
       case 'get_open_status':
-        return this.verificaSeEstaAberto(args.isoDatetime);
+        return this.verificaSeEstaAberto();
       case 'get_evento_info':
         return this.getEventoInfo(args.nomeEvento);
       case 'get_programacao':
@@ -191,20 +232,20 @@ export class AtendenteService {
     }
   }
 
-  private verificaSeEstaAberto(isoDatetime: string) {
-    const agora = new Date(isoDatetime);
-    const diaSemana = agora.getDay();
-    const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
+  private verificaSeEstaAberto() {
+    const now = this.nowPartsInTZ(); // usa BUSINESS_TZ
+    const diaSemana = now.weekdayIndex;
+    const minutosAgora = now.hour * 60 + now.minute;
     const hoje = FUNCIONAMENTO[diaSemana] || [];
 
     let abertoAgora = false;
     let proximaAbertura: string | null = null;
     let proximoFechamento: string | null = null;
 
-    function hhmmParaMinutos(hhmm: string) {
+    const hhmmParaMinutos = (hhmm: string) => {
       const [h, m] = hhmm.split(':').map(Number);
       return h * 60 + m;
-    }
+    };
 
     for (const slot of hoje) {
       const ini = hhmmParaMinutos(slot.abre);
@@ -215,7 +256,6 @@ export class AtendenteService {
         proximoFechamento = slot.fecha;
         break;
       }
-
       if (minutosAgora < ini && !proximaAbertura) {
         proximaAbertura = slot.abre;
       }
@@ -229,13 +269,18 @@ export class AtendenteService {
       }
     }
 
+    // 👉 Anexa a programação de hoje
+    const programacaoHoje = this.getProgramacaoDoDia(diaSemana);
+
     return {
-      agora: agora.toISOString(),
+      agoraLocal: now.isoLocal,
+      timezone: BUSINESS_TZ,
       diaSemana,
       abertoAgora,
       hoje,
       proximaAbertura,
       proximoFechamento,
+      programacaoHoje,
     };
   }
 
@@ -249,13 +294,13 @@ export class AtendenteService {
     const nomeNormalizado = normaliza(nome);
 
     let evento = EVENTOS.find((e) =>
-      normaliza(e.name).includes(nomeNormalizado),
+      e.names.some((n) => normaliza(n).includes(nomeNormalizado)),
     );
 
     if (!evento) {
       const palavras = nomeNormalizado.split(/\s+/);
       evento = EVENTOS.find((e) =>
-        palavras.some((p) => normaliza(e.name).includes(p)),
+        palavras.some((p) => e.names.some((n) => normaliza(n).includes(p))),
       );
     }
 
@@ -276,7 +321,7 @@ export class AtendenteService {
 
     return {
       encontrado: true,
-      nome: evento.name,
+      nome: evento.names,
       dias,
       horario: { abre: evento.abre, fecha: evento.fecha },
     };
@@ -302,7 +347,7 @@ export class AtendenteService {
         nome: diasMap[dia],
         funcionamento: funcionamentoHoje,
         eventos: eventosHoje.map((e) => ({
-          nome: e.name,
+          nome: e.names,
           abre: e.abre,
           fecha: e.fecha,
         })),
@@ -310,5 +355,93 @@ export class AtendenteService {
     });
 
     return { programacao };
+  }
+
+  private getProgramacaoDoDia(dia: number) {
+    const diasMap = [
+      'domingo',
+      'segunda',
+      'terça',
+      'quarta',
+      'quinta',
+      'sexta',
+      'sábado',
+    ];
+    const funcionamentoHoje = FUNCIONAMENTO[dia] || [];
+    const eventosHoje = EVENTOS.filter((e) => e.dias.includes(dia));
+
+    const eventos = eventosHoje.map((e) => ({
+      nome: e.names,
+      abre: e.abre,
+      fecha: e.fecha,
+    }));
+
+    const temJantar = eventosHoje.find((e) =>
+      e.names.some((n) => n.toLowerCase().includes('jantar')),
+    );
+    const temFondue = eventosHoje.find((e) =>
+      e.names.some((n) => n.toLowerCase().includes('fondue')),
+    );
+
+    const observacoes: {
+      destaquesNoite?: Array<{ inicio: string; descricao: string }>;
+    } = {};
+
+    if (temJantar && temFondue) {
+      observacoes.destaquesNoite = [
+        { inicio: temJantar.abre, descricao: 'Cardápio completo (jantar)' },
+        { inicio: temFondue.abre, descricao: 'Fondue da Glória' },
+      ];
+    }
+
+    return {
+      dia,
+      nomeDia: diasMap[dia],
+      funcionamento: funcionamentoHoje,
+      eventos,
+      observacoes, // 👈 novo campo
+    };
+  }
+
+  private nowPartsInTZ(tz = BUSINESS_TZ) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      weekday: 'short',
+    }).formatToParts(new Date());
+
+    const get = (type: string) => parts.find((p) => p.type === type)?.value!;
+    const weekdayShort = get('weekday'); // Sun, Mon, ...
+    const mapWeek: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+
+    const y = get('year'),
+      m = get('month'),
+      d = get('day');
+    const h = get('hour'),
+      min = get('minute'),
+      s = get('second');
+
+    // “ISO local” útil para logs
+    const isoLocal = `${y}-${m}-${d}T${h}:${min}:${s}`;
+    return {
+      weekdayIndex: mapWeek[weekdayShort],
+      hour: Number(h),
+      minute: Number(min),
+      isoLocal,
+    };
   }
 }
