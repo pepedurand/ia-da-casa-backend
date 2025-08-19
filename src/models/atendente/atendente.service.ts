@@ -40,13 +40,38 @@ export const EVENTOS: Evento[] = [
 ];
 
 const SYSTEM_INSTRUCTIONS = `
-Você é uma atendente simpática e prestativa de um restaurante. Nunca invente dados — use as funções disponíveis para responder corretamente.
+Você é uma atendente simpática e prestativa de um restaurante. Use sempre as funções disponíveis para responder com precisão.
 
-Use:
-- "get_open_status" para perguntas como: "Vocês estão abertos agora?", "Qual o horário de funcionamento hoje?"
-- "get_evento_info" para perguntas como: "Quando tem fondue?", "Vocês têm menu executivo?", "Tem música ao vivo?"
+Você nunca deve inventar informações sobre horários ou eventos. Use as funções para isso.
 
-Sempre responda de forma clara, acolhedora e oferecendo alternativas quando necessário.
+### Quando usar as funções:
+
+- **get_open_status(isoDatetime)**:
+  - Quando o cliente pergunta se o restaurante está aberto, ou quais são os horários de funcionamento.
+
+- **get_evento_info(nomeEvento)**:
+  - Quando o cliente pergunta sobre um evento específico, como "quando tem fondue?", "tem música ao vivo?", etc.
+  - Mas também quando ele faz perguntas gerais como "qual a programação do final de semana?", "o que tem hoje?", "tem algum evento especial?", etc.
+  - Nesses casos, você deve chamar a função para cada evento e montar uma resposta listando todos os que acontecem nas datas mencionadas (ex: sábado e domingo).
+
+### Como responder:
+
+- Sempre use linguagem simpática, clara e acolhedora.
+- Quando algo não estiver disponível, ofereça alternativas.
+- Ao listar programação de dias como fim de semana, organize por dia e horário.
+
+Exemplo:
+
+**Cliente**: Qual a programação do final de semana?  
+**Você**: Neste fim de semana temos:
+- Sábado:
+  - Café da manhã das 10h às 13h
+  - Almoço e jantar das 13h às 23h
+- Domingo:
+  - Café da manhã das 10h às 13h
+  - Almoço das 13h às 18h
+
+Se quiser, posso reservar sua mesa! 😊
 `.trim();
 
 enum toolTypes {
@@ -81,6 +106,24 @@ const tools: Tool[] = [
       required: ['nomeEvento'],
     },
     strict: false,
+  },
+  {
+    type: toolTypes.FUNCTION,
+    name: 'get_programacao',
+    strict: false,
+    description:
+      'Retorna os eventos e horários de funcionamento de dias específicos (ex: fim de semana).',
+    parameters: {
+      type: 'object',
+      properties: {
+        dias: {
+          type: 'array',
+          items: { type: 'number', minimum: 0, maximum: 6 },
+          description: 'Array com os dias da semana (0=domingo, 6=sábado)',
+        },
+      },
+      required: [],
+    },
   },
 ];
 
@@ -130,15 +173,13 @@ export class AtendenteService {
   }
 
   private callFunction(name: string, args: any) {
-    console.log(
-      `Chamando função ${name} com argumentos: ${JSON.stringify(args)}`,
-    );
     switch (name) {
       case 'get_open_status':
         return this.verificaSeEstaAberto(args.isoDatetime);
       case 'get_evento_info':
-        console.log(this.getEventoInfo(args.nomeEvento));
         return this.getEventoInfo(args.nomeEvento);
+      case 'get_programacao':
+        return this.getProgramacao(args.dias);
       default:
         return { error: 'Função desconhecida' };
     }
@@ -201,12 +242,10 @@ export class AtendenteService {
 
     const nomeNormalizado = normaliza(nome);
 
-    // Primeiro, busca exata por includes
     let evento = EVENTOS.find((e) =>
       normaliza(e.name).includes(nomeNormalizado),
     );
 
-    // Se não achar, tenta buscar o evento que contém alguma palavra-chave
     if (!evento) {
       const palavras = nomeNormalizado.split(/\s+/);
       evento = EVENTOS.find((e) =>
@@ -235,5 +274,35 @@ export class AtendenteService {
       dias,
       horario: { abre: evento.abre, fecha: evento.fecha },
     };
+  }
+
+  private getProgramacao(dias: number[] = [0, 1, 2, 3, 4, 5, 6]) {
+    const diasMap = [
+      'domingo',
+      'segunda',
+      'terça',
+      'quarta',
+      'quinta',
+      'sexta',
+      'sábado',
+    ];
+
+    const programacao = dias.map((dia) => {
+      const eventosHoje = EVENTOS.filter((evento) => evento.dias.includes(dia));
+      const funcionamentoHoje = FUNCIONAMENTO[dia] || [];
+
+      return {
+        dia,
+        nome: diasMap[dia],
+        funcionamento: funcionamentoHoje,
+        eventos: eventosHoje.map((e) => ({
+          nome: e.name,
+          abre: e.abre,
+          fecha: e.fecha,
+        })),
+      };
+    });
+
+    return { programacao };
   }
 }
