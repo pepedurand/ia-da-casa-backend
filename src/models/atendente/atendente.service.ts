@@ -166,7 +166,7 @@ export class AtendenteService {
   }
   private callFunction(name, args) {
     if (name === 'get_open_status') {
-      return this.verificaSeEstaAberto(args);
+      return this.verificaSeEstaAberto(args.isoDatetime);
     }
   }
 
