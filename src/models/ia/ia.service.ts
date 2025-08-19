@@ -31,7 +31,7 @@ export class IaService {
     this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
-  async chat(chatData: ChatBody, userId: string): Promise<ChatResponse> {
+  async chat(chatData: ChatBody, userId: string): Promise<any> {
     const {
       agentId,
       prompt,
@@ -40,98 +40,172 @@ export class IaService {
       contextId,
     } = chatData;
 
-    console.log(`Iniciando chat com agente ${agentId} para usuário ${userId}`);
-
-    try {
-      let threadRecord: ConversasAgentes | null;
-      let threadId: string;
-
-      if (thread_id) {
-        threadRecord = await this.conversasRepository.findOne({
-          where: { userId, threadId: thread_id },
-        });
-
-        if (!threadRecord) {
-          console.error(
-            `Thread ${thread_id} não encontrada ou não pertence ao usuário ${userId}`,
-          );
-          throw new BadRequestException(
-            'Conversa não encontrada ou não pertence ao usuário',
-          );
-        }
-
-        threadId = threadRecord.threadId;
-        threadRecord.lastUpdated = new Date();
-        await this.conversasRepository.save(threadRecord);
-
-        console.log(
-          `Usando thread existente ${threadId} para usuário ${userId} e agente ${agentId}`,
-        );
-      } else {
-        const newThread: any = await this.openai.request({
-          method: 'post',
-          path: '/threads',
-          headers: { 'OpenAI-Beta': 'assistants=v2' },
-        });
-        threadId = newThread.id;
-
-        const title = await this.generateTitle(prompt);
-
-        console.log(
-          `Criado novo thread ${threadId} para usuário ${userId} e agente ${agentId} com título: ${title}`,
-        );
-
-        threadRecord = this.conversasRepository.create({
-          userId,
-          agent: agentId,
-          threadId,
-          title,
-        });
-
-        await this.conversasRepository.save(threadRecord);
-        // Se usar cache, descomente:
-        // const conversationsCacheKey = `openai-agents/conversations/${userId}`;
-        // await this.cacheManager.del(conversationsCacheKey);
-      }
-
-      await this.openai.request({
-        method: 'post',
-        path: `/threads/${threadId}/messages`,
-        body: { role: 'user', content: prompt },
-        headers: { 'OpenAI-Beta': 'assistants=v2' },
-      });
-
-      const run: any = await this.openai.request({
-        method: 'post',
-        path: `/threads/${threadId}/runs`,
-        body: {
-          assistant_id: agentId,
-          model,
+    const tools = [
+      {
+        type: 'function' as const,
+        name: 'get_horoscope',
+        description: "Get today's horoscope for an astrological sign.",
+        parameters: {
+          type: 'object',
+          properties: {
+            sign: {
+              type: 'string',
+              description: 'An astrological sign like Taurus or Aquarius',
+            },
+          },
+          required: ['sign'],
         },
-        headers: { 'OpenAI-Beta': 'assistants=v2' },
-      });
+        strict: true,
+      },
+    ];
 
-      await this.waitForRunCompletion(threadId, run.id);
+    // Create a running input list we will add to over time
+    let input: any[] = [
+      {
+        role: 'user' as const,
+        content: prompt,
+      },
+    ];
 
-      const reply = (await this.fetchLastAssistantMessage(threadId)) ?? '';
+    // 2. Prompt the model with tools defined
+    let response = await this.openai.responses.create({
+      model: 'gpt-5',
+      tools,
+      input,
+    });
 
-      return {
-        reply,
-        runId: run.id,
-        threadId,
-      };
-    } catch (error: any) {
-      console.error(
-        `Erro ao processar chat com agente: ${error.message}`,
-        error.stack,
-      );
-      if (error instanceof BadRequestException) {
-        throw error;
+    // Save function call outputs for subsequent requests
+    let functionCall: (typeof response.output)[number] | undefined;
+    let functionCallArguments: any;
+    input.push(...response.output);
+
+    response.output.forEach((item) => {
+      if (item.type === 'function_call') {
+        functionCall = item;
+        functionCallArguments = JSON.parse(item.arguments);
       }
-      throw new InternalServerErrorException(
-        `Erro ao processar chat com agente: ${error.message}`,
-      );
+    });
+
+    // 3. Execute the function logic for get_horoscope
+    function getHoroscope(sign: string) {
+      return sign + ' Next Tuesday you will befriend a baby otter.';
     }
+    const result = { horoscope: getHoroscope(functionCallArguments?.sign) };
+
+    // 4. Provide function call results to the model
+    if (!functionCall || functionCall.type !== 'function_call') {
+      throw new InternalServerErrorException('Function call is undefined.');
+    }
+    input.push({
+      type: 'function_call_output',
+      // ⬇️ USE O call_id DO ITEM function_call
+      call_id: functionCall.call_id, // <-- ajuste aqui
+      output: JSON.stringify(result),
+    });
+
+    response = await this.openai.responses.create({
+      model: 'gpt-5',
+      instructions: 'Respond only with a horoscope generated by a tool.',
+      tools,
+      input,
+      // parallel_tool_calls: false, // (opcional) se quiser garantir 1 por vez
+    });
+
+    console.log('Final output:');
+    console.log(JSON.stringify(response.output, null, 2));
+
+    // console.log(`Iniciando chat com agente ${agentId} para usuário ${userId}`);
+
+    // try {
+    //   let threadRecord: ConversasAgentes | null;
+    //   let threadId: string;
+
+    //   if (thread_id) {
+    //     threadRecord = await this.conversasRepository.findOne({
+    //       where: { userId, threadId: thread_id },
+    //     });
+
+    //     if (!threadRecord) {
+    //       console.error(
+    //         `Thread ${thread_id} não encontrada ou não pertence ao usuário ${userId}`,
+    //       );
+    //       throw new BadRequestException(
+    //         'Conversa não encontrada ou não pertence ao usuário',
+    //       );
+    //     }
+
+    //     threadId = threadRecord.threadId;
+    //     threadRecord.lastUpdated = new Date();
+    //     await this.conversasRepository.save(threadRecord);
+
+    //     console.log(
+    //       `Usando thread existente ${threadId} para usuário ${userId} e agente ${agentId}`,
+    //     );
+    //   } else {
+    //     const newThread: any = await this.openai.request({
+    //       method: 'post',
+    //       path: '/threads',
+    //       headers: { 'OpenAI-Beta': 'assistants=v2' },
+    //     });
+    //     threadId = newThread.id;
+
+    //     const title = await this.generateTitle(prompt);
+
+    //     console.log(
+    //       `Criado novo thread ${threadId} para usuário ${userId} e agente ${agentId} com título: ${title}`,
+    //     );
+
+    //     threadRecord = this.conversasRepository.create({
+    //       userId,
+    //       agent: agentId,
+    //       threadId,
+    //       title,
+    //     });
+
+    //     await this.conversasRepository.save(threadRecord);
+    //     // Se usar cache, descomente:
+    //     // const conversationsCacheKey = `openai-agents/conversations/${userId}`;
+    //     // await this.cacheManager.del(conversationsCacheKey);
+    //   }
+
+    //   await this.openai.request({
+    //     method: 'post',
+    //     path: `/threads/${threadId}/messages`,
+    //     body: { role: 'user', content: prompt },
+    //     headers: { 'OpenAI-Beta': 'assistants=v2' },
+    //   });
+
+    //   const run: any = await this.openai.request({
+    //     method: 'post',
+    //     path: `/threads/${threadId}/runs`,
+    //     body: {
+    //       assistant_id: agentId,
+    //       model,
+    //     },
+    //     headers: { 'OpenAI-Beta': 'assistants=v2' },
+    //   });
+
+    //   await this.waitForRunCompletion(threadId, run.id);
+
+    //   const reply = (await this.fetchLastAssistantMessage(threadId)) ?? '';
+
+    //   return {
+    //     reply,
+    //     runId: run.id,
+    //     threadId,
+    //   };
+    // } catch (error: any) {
+    //   console.error(
+    //     `Erro ao processar chat com agente: ${error.message}`,
+    //     error.stack,
+    //   );
+    //   if (error instanceof BadRequestException) {
+    //     throw error;
+    //   }
+    //   throw new InternalServerErrorException(
+    //     `Erro ao processar chat com agente: ${error.message}`,
+    //   );
+    // }
   }
 
   async createAgent(
