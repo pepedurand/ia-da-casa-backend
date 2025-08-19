@@ -2,11 +2,19 @@ import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ResponseInput, Tool } from 'openai/resources/responses/responses';
 
+type Intervalo = { abre: string; fecha: string };
+
 const BUSINESS_TZ = process.env.BUSINESS_TZ || 'America/Sao_Paulo';
 
 // Novo tipo de funcionamento
 type FuncSlot = { abre: string; fecha: string };
-type Evento = { names: string[]; dias: number[]; abre: string; fecha: string };
+type Evento = {
+  names: string[];
+  dias: number[];
+  abre: string;
+  fecha: string;
+  obs?: string;
+};
 
 export const FUNCIONAMENTO: Record<number, FuncSlot[]> = {
   0: [
@@ -42,10 +50,12 @@ export const EVENTOS: Evento[] = [
   },
   {
     names: ['Fondue da Glória', 'fondue', 'fundue', 'fondue da casa'],
-    dias: [3, 4, 5],
+    dias: [3, 4, 5, 6], // quarta a sábado
     abre: '19:00',
     fecha: '23:00',
+    obs: 'Servido por tempo limitado',
   },
+
   {
     names: ['Música ao vivo', 'música', 'show', 'som ao vivo'],
     dias: [5],
@@ -75,6 +85,7 @@ Evite responder em tópicos, prefira frases.
 Ao ser referir a eventos ou horário, prefira o termo programação.
 Pergunte se precisar de mais informações.
 Evite dizer que estamos fechados.
+Evite dizer que não temos algo, em vez disso, ofereça alternativas ou destaque outras opções disponíveis.
 
 ### Quando usar as funções:
 
@@ -85,6 +96,9 @@ Evite dizer que estamos fechados.
   - Quando o cliente pergunta sobre um evento específico, como "quando tem fondue?", "tem música ao vivo?", "tem menu executivo?", "tem café da manhã?", "tem almoço ou jantar?".
   - Mesmo que o cliente use palavras genéricas como "vocês têm executivo?", "tem fondue hoje?", "e jantar?", "servem almoço?", chame a função passando o nome do evento citado.
   - Sempre que uma pergunta citar algo do tipo: fondue, música ao vivo, menu executivo, café da manhã, almoço, jantar — chame "get_evento_info".
+  - Se houver o campo observacao no retorno, você pode mencioná-lo após descrever os dias e horários do evento. Exemplo: “O fondue é servido de quarta a sábado, das 19h às 23h. Por tempo limitado!”
+  - Ao responder com get_evento_info, só mencione sugestões alternativas (como Menu Executivo ou cardápio completo) se a pergunta indicar que o cliente quer saber se tem o evento hoje (ex: “tem fondue hoje?” ou “hoje tem fondue?”).
+  - Se a pergunta for genérica (“quais os dias do fondue?”), apenas responda os dias e horários do evento e, se existir, inclua a observação.
 
 - **get_programacao(dias)**: Use quando perguntarem “que horas vocês abrem?”, “qual o horário de funcionamento?”, 
   ou qualquer pergunta genérica sobre abertura/fechamento sem referência a “hoje” ou “agora”. 
@@ -103,11 +117,16 @@ Evite dizer que estamos fechados.
 - Sempre responda de forma clara, acolhedora e simpática.
 - Quando algo não estiver disponível, ofereça alternativas ou destaque outras atrações.
 - Ao listar programação, organize por dia e horário.
+- Quando a pergunta citar “hoje” sobre um evento que não ocorre hoje, informe educadamente os dias/horários em que ele acontece e, em seguida, ofereça alternativas com base em "sugestoesHoje" retornadas pela função — por exemplo: “Hoje temos menu executivo das 12h às 16h e o cardápio completo nos demais horários de funcionamento.”
+
 
 #### Exemplos:
 
 **Cliente**: "Vocês têm menu executivo?"  
 **Você**: Temos sim! O Menu Executivo é servido de segunda a sexta, das 12h às 16h. Uma ótima opção para o almoço! 😋
+
+**Cliente**: "Tem cafe da manha hoje?" // nesse dia não tem café da manhã  
+**Você**: Olá! Nosso café da manhã é servido aos sábados e domingos, das 10h às 13h. Hoje temos Menu Executivo das 12h às 16h e cardápio completo nos demais horários de funcionamento.
 
 **Cliente**: "Qual a programação do fim de semana?"  
 **Você**: Neste fim de semana temos:  
@@ -146,11 +165,19 @@ const tools: Tool[] = [
       type: 'object',
       properties: {
         nomeEvento: { type: 'string' },
+        dia: {
+          type: 'number',
+          minimum: 0,
+          maximum: 6,
+          description:
+            'Dia da semana para saber se o evento ocorre (0 = domingo, 6 = sábado)',
+        },
       },
       required: ['nomeEvento'],
     },
     strict: false,
   },
+
   {
     type: toolTypes.FUNCTION,
     name: 'get_programacao',
@@ -224,7 +251,7 @@ export class AtendenteService {
       case 'get_open_status':
         return this.verificaSeEstaAberto();
       case 'get_evento_info':
-        return this.getEventoInfo(args.nomeEvento);
+        return this.getEventoInfo(args.nomeEvento, args.dia);
       case 'get_programacao':
         return this.getProgramacao(args.dias);
       default:
@@ -284,12 +311,9 @@ export class AtendenteService {
     };
   }
 
-  private getEventoInfo(nome: string) {
+  private getEventoInfo(nome: string, diaOverride?: number) {
     const normaliza = (s: string) =>
-      s
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
+      s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
     const nomeNormalizado = normaliza(nome);
 
@@ -304,9 +328,7 @@ export class AtendenteService {
       );
     }
 
-    if (!evento) {
-      return { encontrado: false };
-    }
+    if (!evento) return { encontrado: false };
 
     const diasMap = [
       'domingo',
@@ -319,11 +341,46 @@ export class AtendenteService {
     ];
     const dias = evento.dias.map((i) => diasMap[i]);
 
+    const now = this.nowPartsInTZ();
+    const diaReferencia = diaOverride ?? now.weekdayIndex;
+    const perguntaEhSobreHoje =
+      diaOverride !== undefined && diaOverride === now.weekdayIndex;
+    const disponivelNesseDia = evento.dias.includes(diaReferencia);
+
+    let sugestoesHoje: { nome: string[]; abre: string; fecha: string }[] = [];
+    if (!disponivelNesseDia && perguntaEhSobreHoje) {
+      const executivo = EVENTOS.find(
+        (e) =>
+          e.dias.includes(diaReferencia) &&
+          e.names.some((n) => normaliza(n).includes('executivo')),
+      );
+
+      if (executivo) {
+        sugestoesHoje.push({
+          nome: executivo.names,
+          abre: executivo.abre,
+          fecha: executivo.fecha,
+        });
+      }
+
+      const cardapio = this.menuCompletoIntervalsForDay(diaReferencia);
+      sugestoesHoje = sugestoesHoje.concat(
+        cardapio.map((iv) => ({
+          nome: ['Cardápio completo', 'menu completo'],
+          abre: iv.abre,
+          fecha: iv.fecha,
+        })),
+      );
+    }
+
     return {
       encontrado: true,
       nome: evento.names,
       dias,
       horario: { abre: evento.abre, fecha: evento.fecha },
+      disponivelNesseDia,
+      sugestoesHoje,
+      observacao: evento.obs ?? null,
     };
   }
 
@@ -443,5 +500,54 @@ export class AtendenteService {
       minute: Number(min),
       isoLocal,
     };
+  }
+
+  private hhmmToMin(hhmm: string) {
+    const [h, m] = hhmm.split(':').map(Number);
+    return h * 60 + m;
+  }
+  private minToHHMM(x: number) {
+    const h = Math.floor(x / 60),
+      m = x % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  private subtractIntervals(base: Intervalo[], cut: Intervalo[]): Intervalo[] {
+    let res: Intervalo[] = [...base];
+    for (const c of cut) {
+      const next: Intervalo[] = [];
+      for (const b of res) {
+        const bi = this.hhmmToMin(b.abre),
+          bf = this.hhmmToMin(b.fecha);
+        const ci = this.hhmmToMin(c.abre),
+          cf = this.hhmmToMin(c.fecha);
+        if (bf <= ci || bi >= cf) {
+          next.push(b);
+          continue;
+        } // sem overlap
+        if (bi < ci) next.push({ abre: b.abre, fecha: this.minToHHMM(ci) });
+        if (bf > cf) next.push({ abre: this.minToHHMM(cf), fecha: b.fecha });
+      }
+      res = next;
+    }
+    return res;
+  }
+  private breakfastIntervalsForDay(dia: number): Intervalo[] {
+    const cafe = EVENTOS.filter(
+      (e) =>
+        e.names.some((n) => n.toLowerCase().includes('café da manhã')) &&
+        e.dias.includes(dia),
+    );
+    return cafe.map((e) => ({ abre: e.abre, fecha: e.fecha }));
+  }
+  private menuCompletoIntervalsForDay(dia: number): Intervalo[] {
+    const funcionamento = (FUNCIONAMENTO[dia] || []).map((s) => ({
+      abre: s.abre,
+      fecha: s.fecha,
+    }));
+    const semCafe = this.subtractIntervals(
+      funcionamento,
+      this.breakfastIntervalsForDay(dia),
+    );
+    return semCafe.sort((a, b) => a.abre.localeCompare(b.abre));
   }
 }
