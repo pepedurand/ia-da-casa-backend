@@ -1,1 +1,0 @@
-export const DATA_PROVIDER = 'DATA_PROVIDER';
