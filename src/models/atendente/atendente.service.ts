@@ -2,148 +2,453 @@ import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ResponseInput, Tool } from 'openai/resources/responses/responses';
 
-type Intervalo = { abre: string; fecha: string };
+/**
+ * ============================
+ * Tipos & Dados (SEUS)
+ * ============================
+ */
+type Faixa = { inicio: string; fim?: string };
+interface HorariosDeFuncionamento {
+  nome: DiasDaSemana;
+  horarios: Faixa[];
+  estaAberto?: boolean;
+  options?: string[];
+}
+enum DiasDaSemana {
+  SEGUNDA = 'segunda',
+  TERCA = 'terça',
+  QUARTA = 'quarta',
+  QUINTA = 'quinta',
+  SEXTA = 'sexta',
+  SABADO = 'sábado',
+  DOMINGO = 'domingo',
+}
+interface Programacao {
+  nomes: string[];
+  horarios: HorariosDeFuncionamento[];
+  descricao: string;
+  limitado?: boolean;
+}
+interface Informacoes {
+  nomes: string[];
+  observacoes: string[];
+}
 
 const BUSINESS_TZ = process.env.BUSINESS_TZ || 'America/Sao_Paulo';
 
-// Novo tipo de funcionamento
-type FuncSlot = { abre: string; fecha: string };
-type Evento = {
-  names: string[];
-  dias: number[];
-  abre: string;
-  fecha: string;
-  obs?: string;
-};
+/**
+ * Cole aqui seus arrays
+ */
+const horariosDeFuncionamento: HorariosDeFuncionamento[] = [
+  { nome: DiasDaSemana.SEGUNDA, horarios: [{ inicio: '12:00', fim: '16:00' }] },
+  { nome: DiasDaSemana.TERCA, horarios: [{ inicio: '12:00', fim: '16:00' }] },
+  {
+    nome: DiasDaSemana.QUARTA,
+    horarios: [
+      { inicio: '12:00', fim: '15:00' },
+      { inicio: '18:00', fim: '23:00' },
+    ],
+  },
+  { nome: DiasDaSemana.QUINTA, horarios: [{ inicio: '12:00', fim: '23:00' }] },
+  { nome: DiasDaSemana.SEXTA, horarios: [{ inicio: '12:00', fim: '23:00' }] },
+  { nome: DiasDaSemana.SABADO, horarios: [{ inicio: '10:00', fim: '23:00' }] },
+  { nome: DiasDaSemana.DOMINGO, horarios: [{ inicio: '10:00', fim: '18:00' }] },
+];
 
-export const FUNCIONAMENTO: Record<number, FuncSlot[]> = {
-  0: [
-    { abre: '10:00', fecha: '13:00' },
-    { abre: '13:00', fecha: '18:00' },
-  ],
-  1: [{ abre: '12:00', fecha: '16:00' }],
-  2: [{ abre: '12:00', fecha: '16:00' }],
-  3: [
-    { abre: '12:00', fecha: '15:00' },
-    { abre: '18:00', fecha: '23:00' },
-  ],
-  4: [{ abre: '12:00', fecha: '23:00' }],
-  5: [{ abre: '12:00', fecha: '23:00' }],
-  6: [
-    { abre: '10:00', fecha: '13:00' },
-    { abre: '13:00', fecha: '23:00' },
-  ],
-};
-
-export const EVENTOS: Evento[] = [
+const programacao: Programacao[] = [
   {
-    names: ['Café da manhã', 'café', 'breakfast'],
-    dias: [0, 6],
-    abre: '10:00',
-    fecha: '13:00',
+    nomes: ['executivo', 'menu executivo'],
+    horarios: [
+      {
+        nome: DiasDaSemana.SEGUNDA,
+        horarios: [{ inicio: '12:00', fim: '16:00' }],
+      },
+      {
+        nome: DiasDaSemana.TERCA,
+        horarios: [{ inicio: '12:00', fim: '16:00' }],
+      },
+      {
+        nome: DiasDaSemana.QUARTA,
+        horarios: [{ inicio: '12:00', fim: '15:00' }],
+      },
+      {
+        nome: DiasDaSemana.QUINTA,
+        horarios: [{ inicio: '12:00', fim: '16:00' }],
+      },
+      {
+        nome: DiasDaSemana.SEXTA,
+        horarios: [{ inicio: '12:00', fim: '16:00' }],
+      },
+    ],
+    descricao:
+      'Duas opções de executivo: (1) escolha 1 carne, 1 acompanhamento e 1 molho; (2) entrada + principal + sobremesa, com novidades quinzenais.',
   },
   {
-    names: ['Menu executivo', 'executivo', 'prato do dia', 'almoço executivo'],
-    dias: [1, 2, 3, 4, 5],
-    abre: '12:00',
-    fecha: '16:00',
+    nomes: ['cafe', 'café da manhã'],
+    horarios: [
+      {
+        nome: DiasDaSemana.SABADO,
+        horarios: [{ inicio: '10:00', fim: '13:00' }],
+      },
+      {
+        nome: DiasDaSemana.DOMINGO,
+        horarios: [{ inicio: '10:00', fim: '13:00' }],
+      },
+    ],
+    descricao:
+      'Menu completo com pães, frutas, bolos e bebidas quentes. Opções veganas e vegetarianas. Combos e à la carte.',
   },
   {
-    names: ['Fondue da Glória', 'fondue', 'fundue', 'fondue da casa'],
-    dias: [3, 4, 5, 6],
-    abre: '19:00',
-    fecha: '23:00',
-    obs: 'Servido por tempo limitado',
+    nomes: ['jantar'],
+    horarios: [
+      {
+        nome: DiasDaSemana.QUARTA,
+        horarios: [{ inicio: '18:00', fim: '23:00' }],
+      },
+      {
+        nome: DiasDaSemana.QUINTA,
+        horarios: [{ inicio: '18:00', fim: '23:00' }],
+      },
+      {
+        nome: DiasDaSemana.SEXTA,
+        horarios: [{ inicio: '18:00', fim: '23:00' }],
+      },
+      {
+        nome: DiasDaSemana.SABADO,
+        horarios: [{ inicio: '18:00', fim: '23:00' }],
+      },
+    ],
+    descricao:
+      'Pratos quentes, saladas e sobremesas — perfeito para fechar o dia.',
   },
-
   {
-    names: ['Música ao vivo', 'música', 'show', 'som ao vivo'],
-    dias: [5],
-    abre: '19:00',
-    fecha: '23:00',
+    nomes: ['menu completo', 'cardapio completo'],
+    horarios: [
+      { nome: DiasDaSemana.SEGUNDA, horarios: [{ inicio: '12:00' }] },
+      { nome: DiasDaSemana.TERCA, horarios: [{ inicio: '12:00' }] },
+      { nome: DiasDaSemana.QUARTA, horarios: [{ inicio: '12:00' }] },
+      { nome: DiasDaSemana.QUINTA, horarios: [{ inicio: '12:00' }] },
+      { nome: DiasDaSemana.SEXTA, horarios: [{ inicio: '12:00' }] },
+      { nome: DiasDaSemana.SABADO, horarios: [{ inicio: '13:00' }] }, // sáb a partir de 13h
+      { nome: DiasDaSemana.DOMINGO, horarios: [{ inicio: '13:00' }] },
+    ],
+    descricao: '',
   },
   {
-    names: ['Jantar', 'dinner', 'refeição noturna'],
-    dias: [3, 4, 5, 6],
-    abre: '18:00',
-    fecha: '23:00',
+    nomes: ['fondue', 'foundue da casa', 'foundue da gloria'],
+    limitado: true,
+    horarios: [
+      { nome: DiasDaSemana.QUARTA, horarios: [{ inicio: '19:00' }] },
+      { nome: DiasDaSemana.QUINTA, horarios: [{ inicio: '19:00' }] },
+      { nome: DiasDaSemana.SEXTA, horarios: [{ inicio: '19:00' }] },
+      { nome: DiasDaSemana.SABADO, horarios: [{ inicio: '19:00' }] },
+    ],
+    descricao:
+      'Experiência de fondue com opções de queijo, carne e chocolate. Todas as opções servem duas pessoas. Por tempo limitado.',
   },
   {
-    names: ['Almoço e jantar', 'almoço', 'lunch'],
-    dias: [6],
-    abre: '13:00',
-    fecha: '23:00',
+    nomes: ['musica ao vivo', 'musica instrumental', 'musica'],
+    horarios: [{ nome: DiasDaSemana.SEXTA, horarios: [{ inicio: '19:00' }] }],
+    descricao: 'Música ao vivo instrumental para acompanhar seu fondue.',
   },
 ];
 
+const informacoes: Informacoes[] = [
+  {
+    nomes: ['cardapio', 'valores'],
+    observacoes: [
+      'Nossos cardápios e valores estão em: https://linktr.ee/bitrodacasa',
+    ],
+  },
+  {
+    nomes: ['endereco'],
+    observacoes: [
+      'Endereço: Ladeira da Glória, 98, Glória, Rio de Janeiro - RJ',
+    ],
+  },
+  {
+    nomes: [
+      'eventos particulares',
+      'casamentos',
+      'festas de 15 anos',
+      'eventos corporativos',
+    ],
+    observacoes: [
+      'Realizamos eventos! Para orçamento: contato@casadagloria.com.br',
+    ],
+  },
+  {
+    nomes: ['reservas'],
+    observacoes: [
+      'Reserve em: https://linktr.ee/bitrodacasa → “Reserva online”.',
+      'Se não aparecer data no sistema, é porque não há disponibilidade.',
+      'Atendemos sem reserva também, mas a disponibilidade pode ser limitada.',
+    ],
+  },
+  {
+    nomes: ['estacionamento'],
+    observacoes: ['Temos estacionamento no local, normalmente há vagas.'],
+  },
+  {
+    nomes: ['como chegar'],
+    observacoes: [
+      'Metrô: estação Glória + 10 minutos a pé.',
+      'Também encontra nos apps buscando por “Bistrô da Casa”.',
+    ],
+  },
+  {
+    nomes: [
+      'formas de pagamento',
+      'tipos de pagamento',
+      'voces aceitam {cartao}',
+    ],
+    observacoes: [
+      'Aceitamos American Express, Diners, Hipercard, Mastercard, Visa, Elo (crédito/debito), Ticket Refeição e Sodexo. O único cartão que não aceitamos ainda é o Alelo.',
+    ],
+  },
+  // extras
+  {
+    nomes: [
+      'aniversario',
+      'aniversário',
+      'bolo',
+      'taxa de bolo',
+      'comemoração',
+    ],
+    observacoes: [
+      'Sobremesa cortesia para o aniversariante — avise ao garçom 🥳.',
+      'Taxa de bolo: terça a quinta NÃO cobramos; sexta a domingo: R$50.',
+      'WhatsApp para combinar: http://wa.me/5521965855546',
+    ],
+  },
+  {
+    nomes: [
+      'pet',
+      'pet friendly',
+      'cachorro',
+      'gato',
+      'animal de estimacao',
+      'animal de estimação',
+    ],
+    observacoes: ['Somos pet friendly! Mantenha seu pet sempre na guia. 🐶🐱'],
+  },
+  {
+    nomes: [
+      'feedback',
+      'reclamacao',
+      'reclamação',
+      'elogio',
+      'sugestao',
+      'sugestão',
+      'avaliacao',
+      'avaliação',
+    ],
+    observacoes: [
+      'Conte pra gente sua experiência! Estamos sempre melhorando 💙',
+    ],
+  },
+  {
+    nomes: ['reserva esgotada', 'sem vagas', 'lotado', 'sem disponibilidade'],
+    observacoes: [
+      'Se o sistema não mostra horários/datas, é porque não há disponibilidade.',
+      'Chame no WhatsApp para checar desistências: 21 96585-5546.',
+      'Reservas/infos: https://linktr.ee/bistrodacasa',
+    ],
+  },
+  {
+    nomes: ['rolha', 'taxa de rolha', 'vinho', 'levar vinho'],
+    observacoes: [
+      'Sem taxa de rolha: terça a quinta.',
+      'Sexta a domingo: taxa de rolha R$40.',
+      'Temos carta de vinhos especial 🍷.',
+    ],
+  },
+];
+
+/**
+ * ============================
+ * Utils
+ * ============================
+ */
+const idxToNome: string[] = [
+  'domingo',
+  'segunda',
+  'terça',
+  'quarta',
+  'quinta',
+  'sexta',
+  'sábado',
+];
+const nomeToIdx: Record<string, number> = {
+  domingo: 0,
+  dom: 0,
+  segunda: 1,
+  seg: 1,
+  'segunda-feira': 1,
+  terça: 2,
+  terca: 2,
+  ter: 2,
+  'terça-feira': 2,
+  quarta: 3,
+  qua: 3,
+  'quarta-feira': 3,
+  quinta: 4,
+  qui: 4,
+  'quinta-feira': 4,
+  sexta: 5,
+  sex: 5,
+  'sexta-feira': 5,
+  sábado: 6,
+  sabado: 6,
+  sáb: 6,
+  sab: 6,
+  'sábado-feira': 6,
+};
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+const horaToMin = (hhmm: string) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + (isNaN(m) ? 0 : m);
+};
+const nowPartsInTZ = (tz = BUSINESS_TZ, at?: Date) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    weekday: 'short',
+  }).formatToParts(at ?? new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value!;
+  const mapWeek: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  return {
+    weekdayIndex: mapWeek[get('weekday')],
+    hour: Number(get('hour')),
+    minute: Number(get('minute')),
+    isoLocal: `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}`,
+  };
+};
+const cardapioCompletoAPartir = (diaIdx: number) =>
+  diaIdx === 0 || diaIdx === 6 ? '13:00' : '12:00';
+
+function funcionamentoDoDia(diaIdx: number): Faixa[] {
+  const nome = idxToNome[diaIdx] as DiasDaSemana;
+  return horariosDeFuncionamento.find((d) => d.nome === nome)?.horarios ?? [];
+}
+function eventoPorTermo(termo: string): Programacao | null {
+  const q = norm(termo);
+  return (
+    (programacao.find((p) => p.nomes.some((n) => norm(n).includes(q))) ||
+      programacao.find((p) =>
+        q
+          .split(/\s+/)
+          .some((tok) => p.nomes.some((n) => norm(n).includes(tok))),
+      )) ??
+    null
+  );
+}
+function faixasEventoNoDia(evento: Programacao, diaIdx: number): Faixa[] {
+  const nomeDia = idxToNome[diaIdx] as DiasDaSemana;
+  return evento.horarios.find((h) => h.nome === nomeDia)?.horarios ?? [];
+}
+function buscarInfo(
+  termo: string,
+): { termos: string[]; observacoes: string[] } | null {
+  const q = norm(termo);
+  const hit =
+    informacoes.find((i) => i.nomes.some((n) => norm(n).includes(q))) ||
+    informacoes.find((i) =>
+      q.split(/\s+/).some((t) => i.nomes.some((n) => norm(n).includes(t))),
+    );
+  return hit ? { termos: hit.nomes, observacoes: hit.observacoes } : null;
+}
+
+/** Compacta dias em texto: ["quarta","quinta","sexta","sábado"] -> "de quarta a sábado" */
+function formatarDias(dias: string[]): string {
+  const indices = dias
+    .map((d) => nomeToIdx[d])
+    .filter((x) => x !== undefined)
+    .sort((a, b) => a - b);
+  if (!indices.length) return '';
+  // monta faixas consecutivas
+  const ranges: Array<[number, number]> = [];
+  let start = indices[0];
+  let prev = indices[0];
+  for (let i = 1; i < indices.length; i++) {
+    const cur = indices[i];
+    if (cur === prev + 1) {
+      prev = cur;
+      continue;
+    }
+    ranges.push([start, prev]);
+    start = prev = cur;
+  }
+  ranges.push([start, prev]);
+
+  const partes = ranges.map(([a, b]) =>
+    a === b ? idxToNome[a] : `de ${idxToNome[a]} a ${idxToNome[b]}`,
+  );
+  if (partes.length === 1) return partes[0];
+  if (partes.length === 2) return `${partes[0]} e ${partes[1]}`;
+  return `${partes.slice(0, -1).join(', ')} e ${partes.at(-1)}`;
+}
+
+/**
+ * ============================
+ * System prompt (ajustado)
+ * ============================
+ */
 const SYSTEM_INSTRUCTIONS = `
-Você é uma atendente simpática e prestativa do restaurante Bistrô da Casa. Use sempre as funções disponíveis para responder com precisão.
+Você é uma atendente simpática do Bistrô da Casa. Responda em frases naturais (sem tópicos), seja acolhedora e NUNCA invente horários.
+Use as ferramentas para montar a resposta. É normal chamar mais de uma ferramenta na mesma pergunta.
+NUNCA use frases meta como "vou buscar", "vou verificar", "vou conferir". Sempre entregue a informação completa na mesma resposta.
 
-Nunca invente informações sobre horários ou eventos. Utilize as funções corretamente.
-Sempre cumprimente o cliente com alegria, com um "Olá!" ou "Obrigado pelo contato".
-Evite responder em tópicos, prefira frases.
-Ao ser referir a eventos ou horário, prefira o termo programação.
-Pergunte se precisar de mais informações.
-Evite dizer que estamos fechados.
-Evite dizer que não temos algo, em vez disso, ofereça alternativas ou destaque outras opções disponíveis.
-Final de semana é sábado e domingo!
+Regras de composição:
+- "Vocês estão abertos agora?" ou "Estão abertos hoje?":
+    • SEMPRE chame get_open_status_now para saber status, próxima abertura/fechamento.
+    • EM SEGUIDA, SEMPRE chame get_programacao_do_dia(dia=hoje) e inclua a programação completa de hoje na mesma resposta.
+    • Responda em uma única mensagem completa (status + horários + programação), evitando promessas de que ainda vai buscar algo.
+- "Amanhã vocês funcionam?" ou "quais os horários amanhã": chame get_funcionamento_do_dia(dia=amanhã) e get_programacao_do_dia(dia=amanhã).
+- "{dia} tem {evento}?": chame check_event_on_day(nomeEvento, dia).  
+ • Se ocorrer, confirme e diga o horário.  
+ • Se NÃO ocorrer, primeiro afirme quando esse evento acontece na semana (ex.: "Nosso café da manhã é servido aos sábados e domingos, das 10h às 13h").  
+ • Em seguida, diga o que teremos no dia citado, usando get_programacao_do_dia(dia), em tom positivo (“mas amanhã estaremos abertos com cardápio completo...”).  
+- "Quando/que dias tem {evento}?": chame get_event_info(nomeEvento).
+    • Se HOJE for um dos dias, comece com "Hoje, temos {evento} a partir das {hora}."
+    • Em seguida, SEMPRE use a ferramenta formatar_dias(dias) para transformar a lista de dias em texto humano (ex.: "de quarta a sábado").
+    • Nunca invente resumos como "até sábado" ou "apenas no fim de semana". Apenas use o retorno de formatar_dias.
+    • Se o evento for limitado (campo "limitado"), mencione "por tempo limitado".
+- "como funciona {informacao}": chame buscar_informacoes(termo).
+- "quais os horários de funcionamento": chame get_funcionamento_da_semana e, se fizer sentido, get_event_info para principais eventos.
 
-### Quando usar as funções:
-
-- **get_open_status**: Use quando perguntarem “vocês estão abertos agora?” ou “qual o horário hoje?”. 
-  Responda se está aberto, a próxima abertura/fechamento e a programação de hoje.
-
-- **get_evento_info(nomeEvento)**:
-  - Quando o cliente pergunta sobre um evento específico, como "quando tem fondue?", "tem música ao vivo?", "tem menu executivo?", "tem café da manhã?", "tem almoço ou jantar?".
-  - Mesmo que o cliente use palavras genéricas como "vocês têm executivo?", "tem fondue hoje?", "e jantar?", "servem almoço?", chame a função passando o nome do evento citado.
-  - Sempre que uma pergunta citar algo do tipo: fondue, música ao vivo, menu executivo, café da manhã, almoço, jantar — chame "get_evento_info".
-  - Se houver o campo observacao no retorno, você pode mencioná-lo após descrever os dias e horários do evento. Exemplo: “O fondue é servido de quarta a sábado, das 19h às 23h. Por tempo limitado!”
-  - Ao responder com get_evento_info, só mencione sugestões alternativas (como Menu Executivo ou cardápio completo) se a pergunta indicar que o cliente quer saber se tem o evento hoje (ex: “tem fondue hoje?” ou “hoje tem fondue?”).
-  - Se a pergunta for genérica (“quais os dias do fondue?”), apenas responda os dias e horários do evento e, se existir, inclua a observação.
-
-- **get_programacao(dias)**: Use quando perguntarem “que horas vocês abrem?”, “qual o horário de funcionamento?”, 
-  ou qualquer pergunta genérica sobre abertura/fechamento sem referência a “hoje” ou “agora”. 
-  Nesse caso, mostre a programação completa da semana (funcionamento + eventos).
-  - Quando houver "observacoes.destaquesNoite", destaque em frase única os dois marcos: 
-  “a partir das {inicio} servimos o cardápio completo (jantar); e a partir das {inicio} também o Fondue da Glória.”
-
-
-- **Sobre "amanhã"**:  
-  Se o cliente perguntar algo como “que horas vocês abrem amanhã?” ou “qual a programação de amanhã?”, 
-  você deve calcular o dia real de amanhã (new Date().getDay() + 1) e chamar "get_programacao" passando esse dia da semana.  
-  Nunca presuma o dia de amanhã, sempre use a data real atual como referência.
-
-### Como responder:
-
-- Sempre responda de forma clara, acolhedora e simpática.
-- Quando algo não estiver disponível, ofereça alternativas ou destaque outras atrações.
-- Ao listar programação, organize por dia e horário.
-- Quando a pergunta citar “hoje” sobre um evento que não ocorre hoje, informe educadamente os dias/horários em que ele acontece e, em seguida, ofereça alternativas com base em "sugestoesHoje" retornadas pela função — por exemplo: “Hoje temos menu executivo das 12h às 16h e o cardápio completo nos demais horários de funcionamento.”
-- Ao falar de programação de um dia específico, mencione que o cardápio completo começa às 12h de segunda a sexta, e às 13h aos sábados e domingos. Quando possível, use “Cardápio completo a partir das {hora}”.
-- Se a pergunta citar um dia específico (ex.: “amanhã tem café da manhã?”, “na sexta tem fondue?”) e o evento **não ocorrer nesse dia**, primeiro informe **quando esse evento acontece na semana** (ex.: “Nosso café da manhã é servido aos sábados e domingos, das 10h às 13h.”). Em seguida, mostre a **programação desse dia**: Menu Executivo (se houver), “cardápio completo a partir das {hora}”, e atrações da noite (fondue, música ao vivo), quando aplicável.
-- Para perguntas do tipo “amanhã tem {evento}?”, calcule o dia real de amanhã e chame **get_evento_info(nomeEvento, dia=amanhã)** para saber se o evento ocorre nesse dia; e complemente a resposta com a **programação do dia**.
-Se a pergunta citar um dia específico (ex.: “amanhã tem café da manhã?”, “na sexta tem fondue?”) e o evento **não ocorrer nesse dia**, responda em duas partes:  
-1. Diga gentilmente quando esse evento é servido na semana.  
-2. Logo depois, explique o que temos nesse dia, de forma fluida, por exemplo:  
-   “Nosso café da manhã é servido apenas sábado e domingo, das 10h às 13h. No sábado e domingo temos também cardápio completo a partir das 13h. Já na sexta, em vez disso, temos Menu Executivo das 12h às 16h, cardápio completo a partir das 12h e, à noite, Fondue da Glória com música ao vivo a partir das 19h.”
-
-#### Exemplos:
-
-**Cliente**: "Vocês têm menu executivo?"  
-**Você**: Temos sim! O Menu Executivo é servido de segunda a sexta, das 12h às 16h. Uma ótima opção para o almoço! 😋
-
-**Cliente**: "Tem cafe da manha hoje?" // nesse dia não tem café da manhã  
-**Você**: Olá! Nosso café da manhã é servido aos sábados e domingos, das 10h às 13h. Hoje temos Menu Executivo das 12h às 16h e cardápio completo nos demais horários de funcionamento.
-
-**Cliente**: "Qual a programação do fim de semana?"  
-**Você**: Neste fim de semana temos:  
-Sábado: Café da manhã das 10h às 13h, almoço e jantar das 13h às 23h.  
-Domingo: Café da manhã das 10h às 13h e almoço das 13h às 18h.  
-
-**Cliente**: "Que horas vocês abrem amanhã?"  
-**Você**: Amanhã, quarta-feira, abrimos das 12h às 15h e depois das 18h às 23h, com nosso fondue da Glória no jantar.  
+Convenções:
+- Ao falar de um dia específico, mencione "cardápio completo a partir das {hora}" (seg–sex 12:00; sáb–dom 13:00).
+- Prefira frases positivas (“Hoje abrimos às … / A próxima abertura é …”) e ofereça alternativas.
+- Pode usar um leve toque de entusiasmo quando adequado (ex.: “um mais gostoso que o outro”).
+- Cumprimente com "Olá!" ou "Obrigado pelo contato" no início e finalize perguntando se precisa de mais algo.
+- Quando a programação tiver vários horários/eventos no mesmo dia, organize em tópicos ou lista com horários claros.
+- Quando houver apenas uma ou duas informações simples, prefira frases corridas.
 `.trim();
 
+/**
+ * ============================
+ * Tools (granulares, componíveis)
+ * ============================
+ */
 enum toolTypes {
   FUNCTION = 'function',
 }
@@ -151,81 +456,118 @@ enum toolTypes {
 const tools: Tool[] = [
   {
     type: toolTypes.FUNCTION,
-    name: 'get_open_status',
+    name: 'get_now',
     description:
-      'Retorna se o restaurante está aberto agora e os horários do dia.',
+      'Retorna a data/hora local e o índice do dia da semana (0=dom..6=sáb).',
+    parameters: { type: 'object', properties: {} },
+    strict: false,
+  },
+  {
+    type: toolTypes.FUNCTION,
+    name: 'get_open_status_now',
+    description:
+      'Indica se está aberto agora e a próxima abertura/fechamento de HOJE.',
+    parameters: { type: 'object', properties: {} },
+    strict: false,
+  },
+  {
+    type: toolTypes.FUNCTION,
+    name: 'get_funcionamento_do_dia',
+    description:
+      'Retorna as faixas de funcionamento de um dia (0=domingo..6=sábado).',
     parameters: {
       type: 'object',
-      properties: {
-        isoDatetime: { type: 'string' },
-      },
-      required: ['isoDatetime'],
+      properties: { dia: { type: 'number', minimum: 0, maximum: 6 } },
+      required: ['dia'],
     },
     strict: false,
   },
   {
     type: toolTypes.FUNCTION,
-    name: 'get_evento_info',
+    name: 'get_programacao_do_dia',
     description:
-      'Retorna dias e horários em que um evento (como fondue) acontece.',
+      'Retorna um resumo da programação de um dia: executivo, fondue, música e "cardápio completo a partir de".',
     parameters: {
       type: 'object',
-      properties: {
-        nomeEvento: { type: 'string' },
-        dia: {
-          type: 'number',
-          minimum: 0,
-          maximum: 6,
-          description:
-            'Dia da semana para saber se o evento ocorre (0 = domingo, 6 = sábado)',
-        },
-      },
+      properties: { dia: { type: 'number', minimum: 0, maximum: 6 } },
+      required: ['dia'],
+    },
+    strict: false,
+  },
+  {
+    type: toolTypes.FUNCTION,
+    name: 'get_funcionamento_da_semana',
+    description: 'Retorna as faixas de funcionamento de toda a semana (0..6).',
+    parameters: { type: 'object', properties: {} },
+    strict: false,
+  },
+  {
+    type: toolTypes.FUNCTION,
+    name: 'get_event_info',
+    description:
+      'Retorna em quais dias e horários um evento/programa acontece e a descrição.',
+    parameters: {
+      type: 'object',
+      properties: { nomeEvento: { type: 'string' } },
       required: ['nomeEvento'],
     },
     strict: false,
   },
-
   {
     type: toolTypes.FUNCTION,
-    name: 'get_programacao',
-    strict: false,
+    name: 'check_event_on_day',
     description:
-      'Retorna os eventos e horários de funcionamento de dias específicos (ex: fim de semana).',
+      'Verifica se um evento/programa ocorre num dia específico e retorna as faixas.',
     parameters: {
       type: 'object',
       properties: {
-        dias: {
-          type: 'array',
-          items: { type: 'number', minimum: 0, maximum: 6 },
-          description: 'Array com os dias da semana (0=domingo, 6=sábado)',
-        },
+        nomeEvento: { type: 'string' },
+        dia: { type: 'number', minimum: 0, maximum: 6 },
       },
-      required: [],
+      required: ['nomeEvento', 'dia'],
     },
+    strict: false,
+  },
+  {
+    type: toolTypes.FUNCTION,
+    name: 'buscar_informacoes',
+    description:
+      'Busca em "informacoes" por termos como aniversário, pet friendly, etc.',
+    parameters: {
+      type: 'object',
+      properties: { termo: { type: 'string' } },
+      required: ['termo'],
+    },
+    strict: false,
+  },
+  {
+    /** NOVA TOOL: compacta lista de dias em texto humano */
+    type: toolTypes.FUNCTION,
+    name: 'formatar_dias',
+    description:
+      'Recebe uma lista de dias da semana (por extenso, minúsculo) e retorna um texto compacto (ex.: "de quarta a sábado").',
+    parameters: {
+      type: 'object',
+      properties: { dias: { type: 'array', items: { type: 'string' } } },
+      required: ['dias'],
+    },
+    strict: false,
   },
 ];
 
+/**
+ * ============================
+ * Service
+ * ============================
+ */
 @Injectable()
 export class AtendenteService {
   private openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   async perguntarProAtendente(prompt: string): Promise<string> {
-    // Obtém data e dia da semana atuais
-    const now = this.nowPartsInTZ();
-    const diasMap = [
-      'domingo',
-      'segunda-feira',
-      'terça-feira',
-      'quarta-feira',
-      'quinta-feira',
-      'sexta-feira',
-      'sábado',
-    ];
+    const now = nowPartsInTZ();
     const dataHoje = now.isoLocal.split('T')[0];
-    const diaSemana = diasMap[now.weekdayIndex];
-
-    // Adiciona contexto ao prompt do usuário
-    const promptComData = `Hoje é ${dataHoje} (${diaSemana}). ${prompt}`;
+    const promptComData = `Hoje é ${dataHoje} (${idxToNome[now.weekdayIndex]}). ${prompt}`;
 
     const input: ResponseInput = [
       { role: 'system', content: SYSTEM_INSTRUCTIONS },
@@ -243,14 +585,13 @@ export class AtendenteService {
       if (output.type !== 'function_call') continue;
 
       const name = output.name;
-      const args = JSON.parse(output.arguments);
+      const args = output.arguments ? JSON.parse(output.arguments) : {};
       const result = this.callFunction(name, args);
 
       input.push({
         role: 'assistant',
         content: `Chamando função ${name} com argumentos: ${output.arguments}`,
       });
-
       input.push({
         role: 'user',
         content: `Resultado da função ${name}: ${JSON.stringify(result)}`,
@@ -267,419 +608,143 @@ export class AtendenteService {
     return resp.output_text ?? '';
   }
 
+  /** Router das tools */
   private callFunction(name: string, args: any) {
     switch (name) {
-      case 'get_open_status':
-        return this.verificaSeEstaAberto();
-      case 'get_evento_info':
-        return this.getEventoInfo(args.nomeEvento, args.dia);
-      case 'get_programacao':
-        return this.getProgramacao(args.dias);
+      case 'get_now':
+        return this.toolGetNow();
+      case 'get_open_status_now':
+        return this.toolGetOpenStatusNow();
+      case 'get_funcionamento_do_dia':
+        return this.toolGetFuncionamentoDoDia(args.dia);
+      case 'get_programacao_do_dia':
+        return this.toolGetProgramacaoDoDia(args.dia);
+      case 'get_funcionamento_da_semana':
+        return this.toolGetFuncionamentoDaSemana();
+      case 'get_event_info':
+        return this.toolGetEventInfo(args.nomeEvento);
+      case 'check_event_on_day':
+        return this.toolCheckEventOnDay(args.nomeEvento, args.dia);
+      case 'buscar_informacoes':
+        return this.toolBuscarInformacoes(args.termo);
+      case 'formatar_dias':
+        return this.toolFormatarDias(args.dias);
       default:
-        return { error: 'Função desconhecida' };
+        return { error: 'função desconhecida' };
     }
   }
 
-  private verificaSeEstaAberto() {
-    const now = this.nowPartsInTZ(); // usa BUSINESS_TZ
-    const diaSemana = now.weekdayIndex;
-    const minutosAgora = now.hour * 60 + now.minute;
-    const hoje = FUNCIONAMENTO[diaSemana] || [];
+  /**
+   * ============================
+   * Implementações
+   * ============================
+   */
+  private toolGetNow() {
+    return nowPartsInTZ();
+  }
 
-    let abertoAgora = false;
-    let proximaAbertura: string | null = null;
-    let proximoFechamento: string | null = null;
+  private toolGetOpenStatusNow() {
+    const now = nowPartsInTZ();
+    const dia = now.weekdayIndex;
+    const faixas = funcionamentoDoDia(dia);
+    const t = now.hour * 60 + now.minute;
 
-    const hhmmParaMinutos = (hhmm: string) => {
-      const [h, m] = hhmm.split(':').map(Number);
-      return h * 60 + m;
-    };
+    let aberto = false;
+    let proxFechamento: string | null = null;
+    let proxAbertura: string | null = null;
 
-    for (const slot of hoje) {
-      const ini = hhmmParaMinutos(slot.abre);
-      const fim = hhmmParaMinutos(slot.fecha);
-
-      if (minutosAgora >= ini && minutosAgora < fim) {
-        abertoAgora = true;
-        proximoFechamento = slot.fecha;
+    for (const f of faixas) {
+      const ini = horaToMin(f.inicio);
+      const fim = f.fim ? horaToMin(f.fim) : Infinity;
+      if (t >= ini && t < fim) {
+        aberto = true;
+        proxFechamento = f.fim ?? null;
         break;
       }
-      if (minutosAgora < ini && !proximaAbertura) {
-        proximaAbertura = slot.abre;
-      }
+      if (t < ini && !proxAbertura) proxAbertura = f.inicio;
     }
 
-    if (!abertoAgora && !proximaAbertura) {
-      const amanha = (diaSemana + 1) % 7;
-      const slotsAmanha = FUNCIONAMENTO[amanha] || [];
-      if (slotsAmanha.length) {
-        proximaAbertura = `amanhã às ${slotsAmanha[0].abre}`;
-      }
+    if (!aberto && !proxAbertura) {
+      const amanha = (dia + 1) % 7;
+      const faixasAmanha = funcionamentoDoDia(amanha);
+      if (faixasAmanha.length)
+        proxAbertura = `amanhã às ${faixasAmanha[0].inicio}`;
     }
-
-    // 👉 Anexa a programação de hoje
-    const programacaoHoje = this.getProgramacaoDoDia(diaSemana);
 
     return {
       agoraLocal: now.isoLocal,
-      timezone: BUSINESS_TZ,
-      diaSemana,
-      abertoAgora,
-      hoje,
-      proximaAbertura,
-      proximoFechamento,
-      programacaoHoje,
+      dia: idxToNome[dia],
+      aberto,
+      proximaAbertura: proxAbertura,
+      proximoFechamento: proxFechamento,
     };
   }
 
-  private cardapioCompletoInicio(dia: number): string {
-    // 0=domingo, 6=sábado
-    return dia === 0 || dia === 6 ? '13:00' : '12:00';
+  private toolGetFuncionamentoDoDia(dia: number) {
+    return { dia: idxToNome[dia], faixas: funcionamentoDoDia(dia) };
   }
-  private getEventoInfo(nome: string, diaOverride?: number) {
-    const normaliza = (s: string) =>
-      s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-    const nomeNormalizado = normaliza(nome);
+  private toolGetProgramacaoDoDia(dia: number) {
+    const inicioCardapio = cardapioCompletoAPartir(dia);
+    const evs = programacao
+      .map((p) => ({ nomes: p.nomes, faixas: faixasEventoNoDia(p, dia) }))
+      .filter((x) => x.faixas.length > 0);
+    const pick = (label: string) =>
+      evs.find((e) => e.nomes.some((n) => norm(n).includes(norm(label))));
+    const executivo = pick('executivo')?.faixas ?? null;
+    const fondue = pick('fondue')?.faixas ?? null;
+    const musica = pick('musica')?.faixas ?? null;
 
-    // tenta por match direto do nome
-    let evento = EVENTOS.find((e) =>
-      e.names.some((n) => normaliza(n).includes(nomeNormalizado)),
-    );
-
-    // fallback: token por token
-    if (!evento) {
-      const palavras = nomeNormalizado.split(/\s+/);
-      evento = EVENTOS.find((e) =>
-        palavras.some((p) => e.names.some((n) => normaliza(n).includes(p))),
-      );
-    }
-
-    if (!evento) return { encontrado: false };
-
-    const diasMap = [
-      'domingo',
-      'segunda',
-      'terça',
-      'quarta',
-      'quinta',
-      'sexta',
-      'sábado',
-    ];
-    const dias = evento.dias.map((i) => diasMap[i]);
-
-    // helper para listar dias de forma natural
-    const listaNatural = (arr: string[]) => {
-      if (arr.length <= 1) return arr.join('');
-      if (arr.length === 2) return `${arr[0]} e ${arr[1]}`;
-      return `${arr.slice(0, -1).join(', ')} e ${arr[arr.length - 1]}`;
+    return {
+      dia: idxToNome[dia],
+      cardapioCompletoAPartir: inicioCardapio,
+      executivo,
+      fondue,
+      musica,
     };
+  }
 
-    const now = this.nowPartsInTZ();
-    const diaReferencia = diaOverride ?? now.weekdayIndex;
-    const perguntaRefereAoDia = diaOverride !== undefined; // pode ser "amanhã", "sexta", etc.
-    const disponivelNesseDia = evento.dias.includes(diaReferencia);
+  private toolGetFuncionamentoDaSemana() {
+    return {
+      semana: [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+        dia: idxToNome[d],
+        faixas: funcionamentoDoDia(d),
+      })),
+    };
+  }
 
-    // programa/resumo do dia perguntado (se a pergunta fixar um dia)
-    const programacaoDoDia = perguntaRefereAoDia
-      ? this.resumoDoDia(diaReferencia)
-      : null;
-
-    // alternativas quando o evento não ocorre no dia perguntado
-    let sugestoesDoDia: { nome: string[]; abre: string; fecha: string }[] = [];
-    if (perguntaRefereAoDia && !disponivelNesseDia && programacaoDoDia) {
-      if (programacaoDoDia.executivo) {
-        sugestoesDoDia.push({
-          nome: ['Menu Executivo', 'executivo', 'almoço executivo'],
-          abre: programacaoDoDia.executivo.abre,
-          fecha: programacaoDoDia.executivo.fecha,
-        });
-      }
-
-      // Cardápio completo a partir de {hora}
-      const cardapioIntervals = this.menuCompletoIntervalsForDay(diaReferencia);
-      if (cardapioIntervals.length) {
-        // força a 1ª faixa a iniciar no "a partir de"
-        const primeira = {
-          ...cardapioIntervals[0],
-          abre: programacaoDoDia.cardapioCompletoInicio,
-        };
-        const faixas = [primeira, ...cardapioIntervals.slice(1)];
-        sugestoesDoDia = sugestoesDoDia.concat(
-          faixas.map((iv) => ({
-            nome: ['Cardápio completo', 'menu completo'],
-            abre: iv.abre,
-            fecha: iv.fecha,
-          })),
-        );
-      }
-
-      if (programacaoDoDia.fondue) {
-        sugestoesDoDia.push({
-          nome: ['Fondue da Glória', 'fondue'],
-          abre: programacaoDoDia.fondue.abre,
-          fecha: programacaoDoDia.fondue.fecha,
-        });
-      }
-      if (programacaoDoDia.musicaAoVivo) {
-        sugestoesDoDia.push({
-          nome: ['Música ao vivo', 'show', 'som ao vivo'],
-          abre: programacaoDoDia.musicaAoVivo.abre,
-          fecha: programacaoDoDia.musicaAoVivo.fecha,
-        });
-      }
-    }
-
-    // moldes de texto suaves para a IA montar a resposta
-    const quandoOcorre =
-      `O ${evento.names[0]} é servido ${listaNatural(dias)}` +
-      `, das ${evento.abre} às ${evento.fecha}${evento.obs ? `. ${evento.obs}` : ''}.`;
-
-    const resumoDia = programacaoDoDia
-      ? (() => {
-          const partes: string[] = [];
-
-          // sempre mencionar "cardápio completo a partir de"
-          partes.push(
-            `cardápio completo a partir das ${programacaoDoDia.cardapioCompletoInicio}`,
-          );
-
-          if (programacaoDoDia.executivo) {
-            partes.unshift(
-              `Menu Executivo das ${programacaoDoDia.executivo.abre} às ${programacaoDoDia.executivo.fecha}`,
-            );
-          }
-          if (programacaoDoDia.fondue) {
-            partes.push(
-              `Fondue da Glória a partir das ${programacaoDoDia.fondue.abre}`,
-            );
-          }
-          if (programacaoDoDia.musicaAoVivo) {
-            partes.push(
-              `música ao vivo a partir das ${programacaoDoDia.musicaAoVivo.abre}`,
-            );
-          }
-
-          // junta de forma natural
-          if (partes.length === 1) return `Nesse dia temos ${partes[0]}.`;
-          if (partes.length === 2)
-            return `Nesse dia temos ${partes[0]} e ${partes[1]}.`;
-          return `Nesse dia temos ${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}.`;
-        })()
-      : null;
-
+  private toolGetEventInfo(nomeEvento: string) {
+    const ev = eventoPorTermo(nomeEvento);
+    if (!ev) return { encontrado: false };
     return {
       encontrado: true,
-      nome: evento.names,
-      dias,
-      horario: { abre: evento.abre, fecha: evento.fecha },
-      disponivelNesseDia,
-      perguntaRefereAoDia,
-      programacaoDoDia, // { cardapioCompletoInicio, executivo?, fondue?, musicaAoVivo? }
-      sugestoesDoDia, // alternativas amigáveis para o dia perguntado (se não ocorrer)
-      observacao: evento.obs ?? null,
-      explicacaoNatural: { quandoOcorre, resumoDia }, // 👈 novos moldes de texto prontos
+      evento: ev.nomes,
+      descricao: ev.descricao,
+      limitado: !!ev.limitado,
+      dias: ev.horarios.map((h) => ({ dia: h.nome, faixas: h.horarios })),
     };
   }
 
-  private resumoDoDia(dia: number) {
-    const inicioCardapio = this.cardapioCompletoInicio(dia);
-    const eventosDia = EVENTOS.filter((e) => e.dias.includes(dia));
-
-    const temExecutivo = eventosDia.find((e) =>
-      e.names.some((n) => n.toLowerCase().includes('executivo')),
-    );
-    const temFondue = eventosDia.find((e) =>
-      e.names.some((n) => n.toLowerCase().includes('fondue')),
-    );
-    const temMusica = eventosDia.find((e) =>
-      e.names.some((n) => n.toLowerCase().includes('música')),
-    );
-
+  private toolCheckEventOnDay(nomeEvento: string, dia: number) {
+    const ev = eventoPorTermo(nomeEvento);
+    if (!ev) return { encontrado: false };
+    const faixas = faixasEventoNoDia(ev, dia);
     return {
-      cardapioCompletoInicio: inicioCardapio, // "12:00" seg–sex | "13:00" sáb–dom
-      executivo: temExecutivo
-        ? { abre: temExecutivo.abre, fecha: temExecutivo.fecha }
-        : null,
-      fondue: temFondue
-        ? { abre: temFondue.abre, fecha: temFondue.fecha }
-        : null,
-      musicaAoVivo: temMusica
-        ? { abre: temMusica.abre, fecha: temMusica.fecha }
-        : null,
+      encontrado: true,
+      evento: ev.nomes,
+      ocorreNoDia: faixas.length > 0,
+      faixasNoDia: faixas,
     };
   }
 
-  private getProgramacao(dias: number[] = [0, 1, 2, 3, 4, 5, 6]) {
-    const diasMap = [
-      'domingo',
-      'segunda',
-      'terça',
-      'quarta',
-      'quinta',
-      'sexta',
-      'sábado',
-    ];
-
-    const programacao = dias.map((dia) => {
-      const eventosHoje = EVENTOS.filter((evento) => evento.dias.includes(dia));
-      const funcionamentoHoje = FUNCIONAMENTO[dia] || [];
-
-      return {
-        dia,
-        nome: diasMap[dia],
-        funcionamento: funcionamentoHoje,
-        eventos: eventosHoje.map((e) => ({
-          nome: e.names,
-          abre: e.abre,
-          fecha: e.fecha,
-        })),
-        // 👇 novo: já manda “a partir de X” por dia
-        cardapioCompletoInicio: this.cardapioCompletoInicio(dia),
-      };
-    });
-
-    return { programacao };
+  private toolBuscarInformacoes(termo: string) {
+    const hit = buscarInfo(termo);
+    if (!hit) return { encontrado: false };
+    return { encontrado: true, ...hit };
   }
 
-  private getProgramacaoDoDia(dia: number) {
-    const diasMap = [
-      'domingo',
-      'segunda',
-      'terça',
-      'quarta',
-      'quinta',
-      'sexta',
-      'sábado',
-    ];
-    const funcionamentoHoje = FUNCIONAMENTO[dia] || [];
-    const eventosHoje = EVENTOS.filter((e) => e.dias.includes(dia));
-
-    const eventos = eventosHoje.map((e) => ({
-      nome: e.names,
-      abre: e.abre,
-      fecha: e.fecha,
-    }));
-
-    const temJantar = eventosHoje.find((e) =>
-      e.names.some((n) => n.toLowerCase().includes('jantar')),
-    );
-    const temFondue = eventosHoje.find((e) =>
-      e.names.some((n) => n.toLowerCase().includes('fondue')),
-    );
-
-    const observacoes: {
-      cardapioCompletoInicio?: string;
-      destaquesNoite?: Array<{ inicio: string; descricao: string }>;
-    } = {};
-
-    // 👇 novo: sempre informar a partir de quando há cardápio completo
-    observacoes.cardapioCompletoInicio = this.cardapioCompletoInicio(dia);
-
-    if (temJantar && temFondue) {
-      observacoes.destaquesNoite = [
-        { inicio: temJantar.abre, descricao: 'Cardápio completo (jantar)' },
-        { inicio: temFondue.abre, descricao: 'Fondue da Glória' },
-      ];
-    }
-
-    return {
-      dia,
-      nomeDia: diasMap[dia],
-      funcionamento: funcionamentoHoje,
-      eventos,
-      observacoes,
-    };
-  }
-
-  private nowPartsInTZ(tz = BUSINESS_TZ) {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz,
-      hour12: false,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      weekday: 'short',
-    }).formatToParts(new Date());
-
-    const get = (type: string) => parts.find((p) => p.type === type)?.value!;
-    const weekdayShort = get('weekday'); // Sun, Mon, ...
-    const mapWeek: Record<string, number> = {
-      Sun: 0,
-      Mon: 1,
-      Tue: 2,
-      Wed: 3,
-      Thu: 4,
-      Fri: 5,
-      Sat: 6,
-    };
-
-    const y = get('year'),
-      m = get('month'),
-      d = get('day');
-    const h = get('hour'),
-      min = get('minute'),
-      s = get('second');
-
-    // “ISO local” útil para logs
-    const isoLocal = `${y}-${m}-${d}T${h}:${min}:${s}`;
-    return {
-      weekdayIndex: mapWeek[weekdayShort],
-      hour: Number(h),
-      minute: Number(min),
-      isoLocal,
-    };
-  }
-
-  private hhmmToMin(hhmm: string) {
-    const [h, m] = hhmm.split(':').map(Number);
-    return h * 60 + m;
-  }
-  private minToHHMM(x: number) {
-    const h = Math.floor(x / 60),
-      m = x % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-  }
-  private subtractIntervals(base: Intervalo[], cut: Intervalo[]): Intervalo[] {
-    let res: Intervalo[] = [...base];
-    for (const c of cut) {
-      const next: Intervalo[] = [];
-      for (const b of res) {
-        const bi = this.hhmmToMin(b.abre),
-          bf = this.hhmmToMin(b.fecha);
-        const ci = this.hhmmToMin(c.abre),
-          cf = this.hhmmToMin(c.fecha);
-        if (bf <= ci || bi >= cf) {
-          next.push(b);
-          continue;
-        } // sem overlap
-        if (bi < ci) next.push({ abre: b.abre, fecha: this.minToHHMM(ci) });
-        if (bf > cf) next.push({ abre: this.minToHHMM(cf), fecha: b.fecha });
-      }
-      res = next;
-    }
-    return res;
-  }
-  private breakfastIntervalsForDay(dia: number): Intervalo[] {
-    const cafe = EVENTOS.filter(
-      (e) =>
-        e.names.some((n) => n.toLowerCase().includes('café da manhã')) &&
-        e.dias.includes(dia),
-    );
-    return cafe.map((e) => ({ abre: e.abre, fecha: e.fecha }));
-  }
-  private menuCompletoIntervalsForDay(dia: number): Intervalo[] {
-    const funcionamento = (FUNCIONAMENTO[dia] || []).map((s) => ({
-      abre: s.abre,
-      fecha: s.fecha,
-    }));
-    const semCafe = this.subtractIntervals(
-      funcionamento,
-      this.breakfastIntervalsForDay(dia),
-    );
-    return semCafe.sort((a, b) => a.abre.localeCompare(b.abre));
+  /** NOVA: expõe o compactador de dias como tool */
+  private toolFormatarDias(dias: string[]) {
+    return { texto: formatarDias(dias) };
   }
 }
