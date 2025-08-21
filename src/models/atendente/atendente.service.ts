@@ -45,7 +45,7 @@ const horariosDeFuncionamento: HorariosDeFuncionamento[] = [
   {
     nome: DiasDaSemana.QUARTA,
     horarios: [
-      { inicio: '12:00', fim: '15:00' },
+      { inicio: '12:00', fim: '16:00' }, // corrigido de 15:00 -> 16:00
       { inicio: '18:00', fim: '23:00' },
     ],
   },
@@ -69,8 +69,8 @@ const programacao: Programacao[] = [
       },
       {
         nome: DiasDaSemana.QUARTA,
-        horarios: [{ inicio: '12:00', fim: '15:00' }],
-      },
+        horarios: [{ inicio: '12:00', fim: '16:00' }],
+      }, // corrigido
       {
         nome: DiasDaSemana.QUINTA,
         horarios: [{ inicio: '12:00', fim: '16:00' }],
@@ -144,12 +144,16 @@ const programacao: Programacao[] = [
       { nome: DiasDaSemana.SABADO, horarios: [{ inicio: '19:00' }] },
     ],
     descricao:
-      'Experiência de fondue com opções de queijo, carne e chocolate. Todas as opções servem duas pessoas. Por tempo limitado.',
+      'Experiência de fondue com opções de queijo, queijo trufado, queijo vegano, carne e chocolate. Todas as opções servem duas pessoas. Por tempo limitado.',
   },
   {
-    nomes: ['musica ao vivo', 'musica instrumental', 'musica'],
+    nomes: [
+      'musica ao vivo',
+      'musica instrumental',
+      'musica instrumental ao vivo',
+    ],
     horarios: [{ nome: DiasDaSemana.SEXTA, horarios: [{ inicio: '19:00' }] }],
-    descricao: 'Música ao vivo instrumental para acompanhar seu fondue.',
+    descricao: 'Música ao vivo instrumental todas as sextas a partir das 19h.',
   },
 ];
 
@@ -267,7 +271,7 @@ const informacoes: Informacoes[] = [
 
 /**
  * ============================
- * Utils
+ * Utils (determinísticos)
  * ============================
  */
 const idxToNome: string[] = [
@@ -376,7 +380,6 @@ function buscarInfo(
     );
   return hit ? { termos: hit.nomes, observacoes: hit.observacoes } : null;
 }
-
 /** Compacta dias em texto: ["quarta","quinta","sexta","sábado"] -> "de quarta a sábado" */
 function formatarDias(dias: string[]): string {
   const indices = dias
@@ -384,7 +387,6 @@ function formatarDias(dias: string[]): string {
     .filter((x) => x !== undefined)
     .sort((a, b) => a - b);
   if (!indices.length) return '';
-  // monta faixas consecutivas
   const ranges: Array<[number, number]> = [];
   let start = indices[0];
   let prev = indices[0];
@@ -398,7 +400,6 @@ function formatarDias(dias: string[]): string {
     start = prev = cur;
   }
   ranges.push([start, prev]);
-
   const partes = ranges.map(([a, b]) =>
     a === b ? idxToNome[a] : `de ${idxToNome[a]} a ${idxToNome[b]}`,
   );
@@ -409,7 +410,7 @@ function formatarDias(dias: string[]): string {
 
 /**
  * ============================
- * System prompt (ajustado)
+ * System prompt (roteamento por IA)
  * ============================
  */
 const SYSTEM_INSTRUCTIONS = `
@@ -417,33 +418,57 @@ Você é uma atendente simpática do Bistrô da Casa. Responda em frases naturai
 Use as ferramentas para montar a resposta. É normal chamar mais de uma ferramenta na mesma pergunta.
 NUNCA use frases meta como "vou buscar", "vou verificar", "vou conferir". Sempre entregue a informação completa na mesma resposta.
 
-Regras de composição:
-- "Vocês estão abertos agora?" ou "Estão abertos hoje?":
-    • SEMPRE chame get_open_status_now para saber status, próxima abertura/fechamento.
-    • EM SEGUIDA, SEMPRE chame get_programacao_do_dia(dia=hoje) e inclua a programação completa de hoje na mesma resposta.
-    • Responda em uma única mensagem completa (status + horários + programação), evitando promessas de que ainda vai buscar algo.
-- "Amanhã vocês funcionam?" ou "quais os horários amanhã": chame get_funcionamento_do_dia(dia=amanhã) e get_programacao_do_dia(dia=amanhã).
-- "{dia} tem {evento}?": chame check_event_on_day(nomeEvento, dia).  
- • Se ocorrer, confirme e diga o horário.  
- • Se NÃO ocorrer, primeiro afirme quando esse evento acontece na semana (ex.: "Nosso café da manhã é servido aos sábados e domingos, das 10h às 13h").  
- • Em seguida, diga o que teremos no dia citado, usando get_programacao_do_dia(dia), em tom positivo (“mas amanhã estaremos abertos com cardápio completo...”).  
-- "Quando/que dias tem {evento}?": chame get_event_info(nomeEvento).
-    • Se HOJE for um dos dias, comece com "Hoje, temos {evento} a partir das {hora}."
-    • Em seguida, SEMPRE use a ferramenta formatar_dias(dias) para transformar a lista de dias em texto humano (ex.: "de quarta a sábado").
-    • Nunca invente resumos como "até sábado" ou "apenas no fim de semana". Apenas use o retorno de formatar_dias.
-    • Se o evento for limitado (campo "limitado"), mencione "por tempo limitado".
-- "como funciona {informacao}": chame buscar_informacoes(termo).
-- "quais os horários de funcionamento": chame get_funcionamento_da_semana e, se fizer sentido, get_event_info para principais eventos.
+ROTEAMENTO POR IA (sempre primeiro):
+- SEMPRE chame primeiro classificar_intencao com {comando, evento, dia?}.
+  • comando ∈ {"quando","que_dias","como_funciona","tem_no_dia"}.
+  • evento é o programa ou tema (ex.: "café da manhã", "executivo", "fondue", "reservas", "formas de pagamento").
+  • dia é opcional (0=dom..6=sáb) quando a pergunta for específica (ex.: "hoje", "amanhã", "quinta").
 
-Convenções:
+REGRAS ESPECIAIS (prioridade alta):
+- Perguntas sobre RESERVA (contendo "reserva", "reservar", "precisa de reserva", "é obrigatório reservar?"):
+  → classificar como {comando:"como_funciona", evento:"reservas"}.
+  → Use apenas buscar_informacoes("reservas"). NÃO mencione horários, programação ou se estamos abertos.
+  → Responda de forma direta: “Atendemos com e sem reserva… link… instruções curtas”.
+
+- Perguntas informativas (endereço, estacionamento, como chegar, formas de pagamento, pet friendly, rolha, aniversários, eventos particulares etc.):
+  → {comando:"como_funciona", evento:"<termo>"} e use buscar_informacoes.
+  → NÃO traga horários, a não ser que a pergunta peça explicitamente.
+
+FLUXOS padrão:
+- comando in {"quando","que_dias"}:
+    • Use apenas get_event_info(nomeEvento) e, se necessário, formatar_dias(dias).
+    • NÃO compare com o dia atual e NÃO mencione programação de hoje.
+- comando == "como_funciona":
+    • Se for um programa do cardápio (café da manhã, executivo, fondue, jantar etc.), use get_event_info(nomeEvento) para trazer horários e descrição.
+    • Se for uma informação institucional (reservas, endereço, pagamento, estacionamento, pet friendly, rolha etc.), use buscar_informacoes(termo).
+- comando == "tem_no_dia":
+    • Use check_event_on_day(nomeEvento, dia).
+    • Se ocorrer, diga que sim e informe o horário.
+    • Se NÃO ocorrer, primeiro diga quando ocorre (get_event_info + formatar_dias) e, EM SEGUIDA, traga get_programacao_do_dia(dia) com tom positivo.
+- "Vocês estão abertos agora?" / "Estão abertos hoje?":
+    • SEMPRE chame get_open_status_now e depois get_programacao_do_dia(dia=hoje).
+- "Amanhã vocês funcionam?" / "quais os horários amanhã":
+    • chame get_funcionamento_do_dia(dia=amanhã) e get_programacao_do_dia(dia=amanhã).
+- "quais os horários de funcionamento":
+    • chame get_funcionamento_da_semana e, se fizer sentido, get_event_info para principais eventos.
+
+EXEMPLOS de classificação:
+- "Precisa fazer reserva?" → {comando:"como_funciona", evento:"reservas"}
+- "Como faço pra reservar?" → {comando:"como_funciona", evento:"reservas"}
+- "Como funciona o café da manhã?" → {comando:"como_funciona", evento:"café da manhã"} → get_event_info
+- "Vocês aceitam Alelo?" → {comando:"como_funciona", evento:"formas de pagamento"}
+- "Tem café da manhã amanhã?" → {comando:"tem_no_dia", evento:"café da manhã", dia: (amanhã)}
+- "Quais os dias do fondue?" → {comando:"que_dias", evento:"fondue"}
+
+Convenções de linguagem:
 - Ao falar de um dia específico, mencione "cardápio completo a partir das {hora}" (seg–sex 12:00; sáb–dom 13:00).
 - Prefira frases positivas (“Hoje abrimos às … / A próxima abertura é …”) e ofereça alternativas.
-- Pode usar um leve toque de entusiasmo quando adequado (ex.: “um mais gostoso que o outro”).
 - Cumprimente com "Olá!" ou "Obrigado pelo contato" no início e finalize perguntando se precisa de mais algo.
-- Quando a programação tiver vários horários/eventos no mesmo dia, organize em tópicos ou lista com horários claros.
-- Quando houver apenas uma ou duas informações simples, prefira frases corridas.
-`.trim();
+- Quando houver poucas informações, prefira frases corridas; quando houver várias, pode listar.
 
+FORMATO sugerido para RESERVAS:
+- "Atendemos com e sem reserva. Para garantir sua mesa, acesse https://linktr.ee/bistrodacasa → 'Reserva online'. Se não aparecer data, é porque não há disponibilidade no sistema. Também atendemos por ordem de chegada."
+`.trim();
 /**
  * ============================
  * Tools (granulares, componíveis)
@@ -454,6 +479,30 @@ enum toolTypes {
 }
 
 const tools: Tool[] = [
+  // IA decide {comando, evento, dia?}
+  {
+    type: toolTypes.FUNCTION,
+    name: 'classificar_intencao',
+    description:
+      'Classifique a pergunta do usuário em {comando, evento, dia?}. ' +
+      'comando ∈ {"quando","que_dias","como_funciona","tem_no_dia"}. ' +
+      'evento é o nome do programa (ex.: "café da manhã", "executivo", "fondue"). ' +
+      'dia é opcional (0=dom..6=sáb) quando a pergunta for específica (ex.: "hoje", "amanhã", "quinta").',
+    parameters: {
+      type: 'object',
+      properties: {
+        comando: {
+          type: 'string',
+          enum: ['quando', 'que_dias', 'como_funciona', 'tem_no_dia'],
+        },
+        evento: { type: 'string' },
+        dia: { type: 'number', minimum: 0, maximum: 6 },
+      },
+      required: ['comando', 'evento'],
+    },
+    strict: false,
+  },
+
   {
     type: toolTypes.FUNCTION,
     name: 'get_now',
@@ -462,6 +511,7 @@ const tools: Tool[] = [
     parameters: { type: 'object', properties: {} },
     strict: false,
   },
+
   {
     type: toolTypes.FUNCTION,
     name: 'get_open_status_now',
@@ -470,6 +520,7 @@ const tools: Tool[] = [
     parameters: { type: 'object', properties: {} },
     strict: false,
   },
+
   {
     type: toolTypes.FUNCTION,
     name: 'get_funcionamento_do_dia',
@@ -482,6 +533,7 @@ const tools: Tool[] = [
     },
     strict: false,
   },
+
   {
     type: toolTypes.FUNCTION,
     name: 'get_programacao_do_dia',
@@ -494,6 +546,7 @@ const tools: Tool[] = [
     },
     strict: false,
   },
+
   {
     type: toolTypes.FUNCTION,
     name: 'get_funcionamento_da_semana',
@@ -501,11 +554,12 @@ const tools: Tool[] = [
     parameters: { type: 'object', properties: {} },
     strict: false,
   },
+
   {
     type: toolTypes.FUNCTION,
     name: 'get_event_info',
     description:
-      'Retorna em quais dias e horários um evento/programa acontece e a descrição.',
+      'Retorna em quais dias e horários um evento acontece e a descrição. Use isto para perguntas "quando/que dias". NÃO use check_event_on_day nesses casos. Não inclua programação de outros itens.',
     parameters: {
       type: 'object',
       properties: { nomeEvento: { type: 'string' } },
@@ -513,6 +567,7 @@ const tools: Tool[] = [
     },
     strict: false,
   },
+
   {
     type: toolTypes.FUNCTION,
     name: 'check_event_on_day',
@@ -528,6 +583,7 @@ const tools: Tool[] = [
     },
     strict: false,
   },
+
   {
     type: toolTypes.FUNCTION,
     name: 'buscar_informacoes',
@@ -540,12 +596,12 @@ const tools: Tool[] = [
     },
     strict: false,
   },
+
   {
-    /** NOVA TOOL: compacta lista de dias em texto humano */
     type: toolTypes.FUNCTION,
     name: 'formatar_dias',
     description:
-      'Recebe uma lista de dias da semana (por extenso, minúsculo) e retorna um texto compacto (ex.: "de quarta a sábado").',
+      'Recebe uma lista de dias (por extenso) e retorna texto compacto (ex.: "de quarta a sábado").',
     parameters: {
       type: 'object',
       properties: { dias: { type: 'array', items: { type: 'string' } } },
@@ -574,61 +630,89 @@ export class AtendenteService {
       { role: 'user', content: promptComData },
     ];
 
-    let resp = await this.openai.responses.create({
-      model: 'gpt-4o-mini',
-      input,
-      tools,
-      tool_choice: 'auto',
-    });
+    let finalText = '';
+    const MAX_HOPS = 5;
 
-    for (const output of resp.output) {
-      if (output.type !== 'function_call') continue;
-
-      const name = output.name;
-      const args = output.arguments ? JSON.parse(output.arguments) : {};
-      const result = this.callFunction(name, args);
-
-      input.push({
-        role: 'assistant',
-        content: `Chamando função ${name} com argumentos: ${output.arguments}`,
+    for (let hop = 0; hop < MAX_HOPS; hop++) {
+      const resp = await this.openai.responses.create({
+        model: 'gpt-4o-mini',
+        input,
+        tools,
+        tool_choice: 'auto',
       });
-      input.push({
-        role: 'user',
-        content: `Resultado da função ${name}: ${JSON.stringify(result)}`,
-      });
+
+      // guarda texto final (se já veio)
+      if (resp.output_text) finalText = resp.output_text;
+
+      // pega todas as chamadas de função desta rodada
+      const calls = (resp.output ?? []).filter(
+        (o: any) => o.type === 'function_call',
+      );
+      if (!calls.length) break; // nada pra executar => encerra
+
+      for (const call of calls) {
+        if (call.type !== 'function_call') continue; // só processa chamadas de função
+        const name = (call as any).name as string;
+        let args: any = {};
+        try {
+          args = call.arguments ? JSON.parse(call.arguments) : {};
+        } catch {
+          args = {};
+        }
+        const result = this.callFunction(name, args);
+
+        // mesmo padrão que você já usava (eco de entrada/saída da tool)
+        input.push({
+          role: 'assistant',
+          content: `Chamando função ${name} com argumentos: ${call.arguments ?? '{}'}`,
+        });
+        input.push({
+          role: 'user',
+          content: `Resultado da função ${name}: ${JSON.stringify(result)}`,
+        });
+      }
     }
 
-    resp = await this.openai.responses.create({
-      model: 'gpt-4o-mini',
-      input,
-      tools,
-      tool_choice: 'auto',
-    });
-
-    return resp.output_text ?? '';
+    return (
+      finalText ||
+      'Desculpe, não consegui interpretar sua pergunta agora. Pode reformular, por favor?'
+    );
   }
 
   /** Router das tools */
   private callFunction(name: string, args: any) {
     switch (name) {
+      case 'classificar_intencao':
+        // ecoa exatamente o que a IA decidiu; a próxima rodada usará isso
+        return { ...args };
+
       case 'get_now':
         return this.toolGetNow();
+
       case 'get_open_status_now':
         return this.toolGetOpenStatusNow();
+
       case 'get_funcionamento_do_dia':
         return this.toolGetFuncionamentoDoDia(args.dia);
+
       case 'get_programacao_do_dia':
         return this.toolGetProgramacaoDoDia(args.dia);
+
       case 'get_funcionamento_da_semana':
         return this.toolGetFuncionamentoDaSemana();
+
       case 'get_event_info':
         return this.toolGetEventInfo(args.nomeEvento);
+
       case 'check_event_on_day':
         return this.toolCheckEventOnDay(args.nomeEvento, args.dia);
+
       case 'buscar_informacoes':
         return this.toolBuscarInformacoes(args.termo);
+
       case 'formatar_dias':
         return this.toolFormatarDias(args.dias);
+
       default:
         return { error: 'função desconhecida' };
     }
@@ -716,12 +800,44 @@ export class AtendenteService {
   private toolGetEventInfo(nomeEvento: string) {
     const ev = eventoPorTermo(nomeEvento);
     if (!ev) return { encontrado: false };
+
+    const diasSemana = ev.horarios.map((h) => h.nome); // ["sábado","domingo"]
+    const diasCompacto = formatarDias(diasSemana);
+
+    const todasFaixas = ev.horarios.flatMap((h) => h.horarios);
+    let horarioPadrao: {
+      tipo: 'intervalo' | 'apartir' | null;
+      inicio?: string;
+      fim?: string;
+    } = { tipo: null };
+    if (todasFaixas.length > 0) {
+      const mesmoInicio = todasFaixas.every(
+        (f) => f.inicio === todasFaixas[0].inicio,
+      );
+      const mesmoFim = todasFaixas.every(
+        (f) => (f.fim ?? null) === (todasFaixas[0].fim ?? null),
+      );
+      if (mesmoInicio && mesmoFim) {
+        if (todasFaixas[0].fim) {
+          horarioPadrao = {
+            tipo: 'intervalo',
+            inicio: todasFaixas[0].inicio,
+            fim: todasFaixas[0].fim,
+          };
+        } else {
+          horarioPadrao = { tipo: 'apartir', inicio: todasFaixas[0].inicio };
+        }
+      }
+    }
+
     return {
       encontrado: true,
       evento: ev.nomes,
       descricao: ev.descricao,
       limitado: !!ev.limitado,
       dias: ev.horarios.map((h) => ({ dia: h.nome, faixas: h.horarios })),
+      diasCompacto,
+      horarioPadrao,
     };
   }
 
@@ -743,7 +859,6 @@ export class AtendenteService {
     return { encontrado: true, ...hit };
   }
 
-  /** NOVA: expõe o compactador de dias como tool */
   private toolFormatarDias(dias: string[]) {
     return { texto: formatarDias(dias) };
   }
