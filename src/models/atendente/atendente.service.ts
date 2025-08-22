@@ -464,6 +464,11 @@ REGRAS ESPECIAIS (prioridade alta):
       2) Principais eventos (café da manhã, menu/cardápio completo, executivo, fondue, música), com dias compactos e seu horário padrão.
       3) Se fizer sentido, finalize com link de reservas/valores (buscar_informacoes) em 1 frase.
 
+- Perguntas sobre "cardápio" / "menu" (ex.: "qual o cardápio?", "o que tem no cardápio?"):
+    • Classifique como {comando:"como_funciona", evento:"cardapio_geral"}.
+    • Chame get_cardapio_geral (NÃO use programação de hoje).
+    • Responda com: link de cardápios/valores e visão geral dos programas (café da manhã, menu/cardápio completo, executivo, fondue), com dias compactos e horário padrão.
+
 
 FLUXOS padrão:
 - comando in {"quando","que_dias"}:
@@ -472,10 +477,19 @@ FLUXOS padrão:
 - comando == "como_funciona":
     • Se for um programa do cardápio (café da manhã, executivo, fondue, jantar etc.), use get_event_info(nomeEvento) para trazer horários e descrição.
     • Se for uma informação institucional (reservas, endereço, pagamento, estacionamento, pet friendly, rolha etc.), use buscar_informacoes(termo).
-- comando == "tem_no_dia":
-    • Use check_event_on_day(nomeEvento, dia).
-    • Se ocorrer, diga que sim e informe o horário.
-    • Se NÃO ocorrer, primeiro diga quando ocorre (get_event_info + formatar_dias) e, EM SEGUIDA, traga get_programacao_do_dia(dia) com tom positivo.
+comando == "tem_no_dia":
+   • SEMPRE chame, nesta ordem: 
+     1) check_event_on_day(nomeEvento, dia)
+     2) get_event_info(nomeEvento)
+     3) get_programacao_do_dia(dia)
+   • Se ocorrer:
+     - Comece confirmando: “Sim, temos {evento} {no dia}, {faixas do dia}.”
+     - Em seguida, traga a visão do DIA: “Além disso, {no dia} temos: {programação do dia: café da manhã, cardápio/menu completo, executivo, fondue, música…}”
+     - Por fim, traga a visão GERAL do EVENTO (sem depender do dia): “O {evento} acontece {diasCompacto} {e, se aplicável, horário padrão (intervalo ou a partir de …)}.”
+   • Se NÃO ocorrer:
+     - Diga que não ocorre no dia perguntado.
+     - Em seguida, traga a visão GERAL do EVENTO (diasCompacto horário padrão).
+     - Depois, sugira a programação do DIA perguntado com tom positivo (get_programacao_do_dia).
 - "Vocês estão abertos agora?" / "Estão abertos hoje?":
     • SEMPRE chame get_open_status_now e depois get_programacao_do_dia(dia=hoje).
 - "Amanhã vocês funcionam?" / "quais os horários amanhã":
@@ -494,11 +508,15 @@ EXEMPLOS de classificação:
 - "qual a programação de vocês?" → {comando:"como_funciona", evento:"visao_geral"}
 - "que dia abrem?" → {comando:"como_funciona", evento:"visao_geral"}
 - "como funciona o bistrô da casa?" → {comando:"como_funciona", evento:"visao_geral"}
+- "qual o cardápio?" → {comando:"como_funciona", evento:"cardapio_geral"}
+- "me manda o cardápio" → {comando:"como_funciona", evento:"cardapio_geral"}
+- "menu de vocês" → {comando:"como_funciona", evento:"cardapio_geral"}
 
 
 Convenções de linguagem:
 - Ao falar de um dia específico, mencione "cardápio completo a partir das {hora}" (seg–sex 12:00; sáb–dom 13:00).
 - Prefira frases positivas (“Hoje abrimos às … / A próxima abertura é …”) e ofereça alternativas.
+- Ao listar programação do dia, mantenha esta ordem quando existir: café da manhã → cardápio/menu completo → executivo → fondue → música.
 - Cumprimente com "Olá!" ou "Obrigado pelo contato" no início e finalize perguntando se precisa de mais algo.
 - Quando houver poucas informações, prefira frases corridas; quando houver várias, pode listar.
 
@@ -516,6 +534,14 @@ enum toolTypes {
 
 const tools: Tool[] = [
   // IA decide {comando, evento, dia?}
+  {
+    type: toolTypes.FUNCTION,
+    name: 'get_cardapio_geral',
+    description:
+      'Retorna uma visão geral do cardápio: link de cardápios/valores e resumo dos programas (café da manhã, cardápio/menu completo, executivo, fondue) com dias compactos e horário padrão.',
+    parameters: { type: 'object', properties: {} },
+    strict: false,
+  },
   {
     type: toolTypes.FUNCTION,
     name: 'get_visao_geral',
@@ -736,6 +762,9 @@ export class AtendenteService {
       case 'get_visao_geral':
         return this.toolGetVisaoGeral();
 
+      case 'get_cardapio_geral':
+        return this.toolGetCardapioGeral();
+
       case 'get_open_status_now':
         return this.toolGetOpenStatusNow();
 
@@ -772,6 +801,68 @@ export class AtendenteService {
    */
   private toolGetNow() {
     return nowPartsInTZ();
+  }
+
+  private toolGetCardapioGeral() {
+    const resumoEvento = (nome: string) => {
+      const ev = eventoPorTermo(nome);
+      if (!ev) return null;
+
+      const diasSemana = ev.horarios.map((h) => h.nome);
+      const diasCompacto = formatarDias(diasSemana);
+
+      const todasFaixas = ev.horarios.flatMap((h) => h.horarios);
+      let horarioPadrao: {
+        tipo: 'intervalo' | 'apartir' | null;
+        inicio?: string;
+        fim?: string;
+      } = { tipo: null };
+
+      if (todasFaixas.length > 0) {
+        const mesmoInicio = todasFaixas.every(
+          (f) => f.inicio === todasFaixas[0].inicio,
+        );
+        const mesmoFim = todasFaixas.every(
+          (f) => (f.fim ?? null) === (todasFaixas[0].fim ?? null),
+        );
+        if (mesmoInicio && mesmoFim) {
+          if (todasFaixas[0].fim) {
+            horarioPadrao = {
+              tipo: 'intervalo',
+              inicio: todasFaixas[0].inicio,
+              fim: todasFaixas[0].fim,
+            };
+          } else {
+            horarioPadrao = { tipo: 'apartir', inicio: todasFaixas[0].inicio };
+          }
+        }
+      }
+
+      return {
+        titulo: ev.nomes[0],
+        sinônimos: ev.nomes,
+        descricao: ev.descricao,
+        limitado: !!ev.limitado,
+        diasCompacto,
+        horarioPadrao,
+      };
+    };
+
+    // Resumos que interessam para "cardápio"
+    const cafe = resumoEvento('café da manhã') ?? resumoEvento('cafe');
+    const executivo = resumoEvento('executivo');
+    const cardapio =
+      resumoEvento('cardapio completo') ?? resumoEvento('menu completo');
+    const fondue = resumoEvento('fondue');
+
+    // Links úteis de cardápio/valores
+    const linkCardapio = buscarInfo('cardapio') ?? buscarInfo('valores');
+    const cardapioLink = linkCardapio?.observacoes?.[0] ?? null;
+
+    return {
+      linkCardapio: cardapioLink, // 👈 sempre volta com o link
+      programas: [cafe, cardapio, executivo, fondue].filter(Boolean),
+    };
   }
 
   private toolGetVisaoGeral() {
