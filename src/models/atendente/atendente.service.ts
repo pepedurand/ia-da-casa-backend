@@ -267,6 +267,20 @@ const informacoes: Informacoes[] = [
       'Temos carta de vinhos especial 🍷.',
     ],
   },
+  {
+    nomes: [
+      'comida vegetarina',
+      'comida vegana',
+      'opções vegetarianas',
+      'opcoes veganas',
+      'vegetariana',
+      'vegana',
+    ],
+    observacoes: [
+      'Temos opções vegetarianas e veganas e voce pode conferir todas no nosso cardápio digital que fica no nosso site',
+      'Para conferir as opções veganas ou vegetarianas, basta acessar o link e ir em cardápio digital',
+    ],
+  },
 ];
 
 /**
@@ -434,6 +448,23 @@ REGRAS ESPECIAIS (prioridade alta):
   → {comando:"como_funciona", evento:"<termo>"} e use buscar_informacoes.
   → NÃO traga horários, a não ser que a pergunta peça explicitamente.
 
+- Perguntas sobre "fim/final de semana" ou "fds":
+    • Considere SEMPRE os dias sábado (6) e domingo (0) — NUNCA inclua sexta-feira.
+    • Chame get_programacao_do_dia(dia=6) e get_programacao_do_dia(dia=0).
+    • Ao montar a resposta, cite explicitamente:
+      - sábado: cardápio completo a partir de {hora}, e todos os itens (ex.: café da manhã se houver, fondue, música etc.)
+      - domingo: idem
+    • Se houver café da manhã em algum dos dias, ELE DEVE SER MENCIONADO.
+
+- Perguntas gerais (ex.: "qual o horário de funcionamento?", "que dia abrem?", "qual a programação de vocês?", "como funciona o bistrô da casa?"):
+    • Classifique como {comando:"como_funciona", evento:"visao_geral"}.
+    • Chame get_visao_geral.
+    • Responda listando:
+      1) Horários da semana (dom→sáb) com faixas.
+      2) Principais eventos (café da manhã, menu/cardápio completo, executivo, fondue, música), com dias compactos e seu horário padrão.
+      3) Se fizer sentido, finalize com link de reservas/valores (buscar_informacoes) em 1 frase.
+
+
 FLUXOS padrão:
 - comando in {"quando","que_dias"}:
     • Use apenas get_event_info(nomeEvento) e, se necessário, formatar_dias(dias).
@@ -459,6 +490,11 @@ EXEMPLOS de classificação:
 - "Vocês aceitam Alelo?" → {comando:"como_funciona", evento:"formas de pagamento"}
 - "Tem café da manhã amanhã?" → {comando:"tem_no_dia", evento:"café da manhã", dia: (amanhã)}
 - "Quais os dias do fondue?" → {comando:"que_dias", evento:"fondue"}
+- "qual o horário de funcionamento?" → {comando:"como_funciona", evento:"visao_geral"}
+- "qual a programação de vocês?" → {comando:"como_funciona", evento:"visao_geral"}
+- "que dia abrem?" → {comando:"como_funciona", evento:"visao_geral"}
+- "como funciona o bistrô da casa?" → {comando:"como_funciona", evento:"visao_geral"}
+
 
 Convenções de linguagem:
 - Ao falar de um dia específico, mencione "cardápio completo a partir das {hora}" (seg–sex 12:00; sáb–dom 13:00).
@@ -480,6 +516,14 @@ enum toolTypes {
 
 const tools: Tool[] = [
   // IA decide {comando, evento, dia?}
+  {
+    type: toolTypes.FUNCTION,
+    name: 'get_visao_geral',
+    description:
+      'Retorna visão geral: funcionamento da semana (0..6) e resumo de todos os eventos (dias compactos + horário padrão + descrição).',
+    parameters: { type: 'object', properties: {} },
+    strict: false,
+  },
   {
     type: toolTypes.FUNCTION,
     name: 'classificar_intencao',
@@ -689,6 +733,9 @@ export class AtendenteService {
       case 'get_now':
         return this.toolGetNow();
 
+      case 'get_visao_geral':
+        return this.toolGetVisaoGeral();
+
       case 'get_open_status_now':
         return this.toolGetOpenStatusNow();
 
@@ -725,6 +772,69 @@ export class AtendenteService {
    */
   private toolGetNow() {
     return nowPartsInTZ();
+  }
+
+  private toolGetVisaoGeral() {
+    // 1) Funcionamento da semana
+    const semana = [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+      dia: idxToNome[d],
+      faixas: funcionamentoDoDia(d),
+    }));
+
+    // 2) Resumo de eventos
+    const eventos = programacao.map((ev) => {
+      const diasSemana = ev.horarios.map((h) => h.nome); // ["sábado","domingo", ...]
+      const diasCompacto = formatarDias(diasSemana);
+
+      const todasFaixas = ev.horarios.flatMap((h) => h.horarios);
+      let horarioPadrao: {
+        tipo: 'intervalo' | 'apartir' | null;
+        inicio?: string;
+        fim?: string;
+      } = { tipo: null };
+
+      if (todasFaixas.length > 0) {
+        const mesmoInicio = todasFaixas.every(
+          (f) => f.inicio === todasFaixas[0].inicio,
+        );
+        const mesmoFim = todasFaixas.every(
+          (f) => (f.fim ?? null) === (todasFaixas[0].fim ?? null),
+        );
+        if (mesmoInicio && mesmoFim) {
+          if (todasFaixas[0].fim) {
+            horarioPadrao = {
+              tipo: 'intervalo',
+              inicio: todasFaixas[0].inicio,
+              fim: todasFaixas[0].fim,
+            };
+          } else {
+            horarioPadrao = { tipo: 'apartir', inicio: todasFaixas[0].inicio };
+          }
+        }
+      }
+
+      return {
+        nomes: ev.nomes, // sinônimos
+        titulo: ev.nomes[0], // nome “principal”
+        descricao: ev.descricao,
+        limitado: !!ev.limitado,
+        diasCompacto,
+        horarioPadrao,
+      };
+    });
+
+    // 3) (Opcional) Pegar links úteis de reservas/valores
+    const reservas = buscarInfo('reservas');
+    const valores = buscarInfo('cardapio') ?? buscarInfo('valores');
+
+    return {
+      funcionamentoSemana: semana,
+      eventos,
+      links: {
+        reservas: reservas?.observacoes?.[0] ?? null,
+        valores: valores?.observacoes?.[0] ?? null,
+      },
+    };
   }
 
   private toolGetOpenStatusNow() {
@@ -769,22 +879,27 @@ export class AtendenteService {
   }
 
   private toolGetProgramacaoDoDia(dia: number) {
-    const inicioCardapio = cardapioCompletoAPartir(dia);
     const evs = programacao
       .map((p) => ({ nomes: p.nomes, faixas: faixasEventoNoDia(p, dia) }))
       .filter((x) => x.faixas.length > 0);
+
     const pick = (label: string) =>
       evs.find((e) => e.nomes.some((n) => norm(n).includes(norm(label))));
+
     const executivo = pick('executivo')?.faixas ?? null;
     const fondue = pick('fondue')?.faixas ?? null;
     const musica = pick('musica')?.faixas ?? null;
+    const cafe = (pick('cafe') ?? pick('café da manhã'))?.faixas ?? null;
+    const cardapio =
+      (pick('menu completo') ?? pick('cardapio completo'))?.faixas ?? null;
 
     return {
       dia: idxToNome[dia],
-      cardapioCompletoAPartir: inicioCardapio,
       executivo,
       fondue,
       musica,
+      cafe,
+      cardapio,
     };
   }
 
