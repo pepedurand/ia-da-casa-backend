@@ -94,7 +94,7 @@ export class ChatService {
         {
           role: 'system',
           content:
-            'Reescreva em PT-BR natural, como uma atendente simpática do Restaurante Bistrô da Casa. Caso a informação venha repetida, compile-as, e conecte os fatos com coesão. Se os dias da semana forem uma sequencia, use de segunda a sexta por exemplo.',
+            'Reescreva em PT-BR natural, como uma atendente simpática do Restaurante Bistrô da Casa. Sempre que a informação vier repetida, compile-as, e conecte os fatos com coesão. Se os dias da semana forem uma sequencia, use de segunda a sexta por exemplo.',
         },
         { role: 'user', content: textoBase },
       ],

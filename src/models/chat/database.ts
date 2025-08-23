@@ -174,7 +174,7 @@ export const informacoes: Informacoes[] = [
     ],
   },
   {
-    nomes: ['reservas'],
+    nomes: ['reservas', 'reseva', 'reservar'],
     observacoes: [
       'Reserve em: https://linktr.ee/bitrodacasa → “Reserva online”.',
       'Se não aparecer data no sistema, é porque não há disponibilidade.',
