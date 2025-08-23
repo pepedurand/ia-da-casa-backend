@@ -86,6 +86,8 @@ export class ChatService {
 
     const textoBase = this.scheduleTool.execute(args, new Date());
 
+    console.log(textoBase);
+
     const polido = await this.openai.responses.create({
       model: 'gpt-4o-mini',
       input: [
@@ -98,9 +100,6 @@ export class ChatService {
       ],
     });
 
-    console.log(polido);
-
-    const final = polido.output.find((o) => o.type === 'message');
-    return final?.content.join('') || textoBase;
+    return polido.output_text || textoBase;
   }
 }

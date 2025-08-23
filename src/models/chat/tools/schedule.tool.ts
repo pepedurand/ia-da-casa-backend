@@ -36,7 +36,6 @@ export class ScheduleTool {
         this.compiladoPeriodo(args, hoje),
         this.compiladoInformacaoSemPeriodo(args),
       ].join('\n\n');
-      // return this.compiladoPeriodoEInformacaoEspecifica(args, hoje);
     }
 
     if (
