@@ -13,18 +13,14 @@ type Args = {
 @Injectable()
 export class ScheduleTool {
   execute(args: Args, hoje: Date = new Date()): string {
-    console.log(args);
-
     if (
       args.data_ou_periodo &&
       (args.informacao_generica || !args.informacao)
     ) {
-      console.log('caiu no periodo');
       return this.compiladoPeriodo(args, hoje);
     }
 
     if ((!args.data_ou_periodo || args.periodo_generico) && args.informacao) {
-      console.log('caiu na informação');
       return this.compiladoInformacaoSemPeriodo(args);
     }
 
@@ -34,7 +30,6 @@ export class ScheduleTool {
       !args.informacao_generica &&
       !args.periodo_generico
     ) {
-      console.log('caiu na informação com periodo');
       return this.compiladoPeriodoEInformacaoEspecifica(args, hoje);
     }
 
@@ -48,7 +43,6 @@ export class ScheduleTool {
       return this.compiladoGeral();
     }
 
-    console.log('caiu no geral');
     return this.compiladoGeral();
   }
 
