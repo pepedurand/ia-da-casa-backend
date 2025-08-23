@@ -84,7 +84,11 @@ export class ChatService {
 
     const args = JSON.parse(toolCall.arguments || '{}');
 
+    // contar o tempo que leva pra executar isso
+    const start = Date.now();
     const textoBase = this.scheduleTool.execute(args, new Date());
+    const end = Date.now();
+    console.log(`Tempo de execução: ${end - start}ms`);
 
     console.log(textoBase);
 
