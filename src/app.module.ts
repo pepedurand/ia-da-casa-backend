@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { UsuarioModule } from './models/usuario/usuario.module';
 import { AuthModule } from './auth/auth.module';
 import { AtendenteModule } from './models/atendente/atendente.module';
+import { ChatModule } from './models/chat/chat.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AtendenteModule } from './models/atendente/atendente.module';
     UsuarioModule,
     AuthModule,
     AtendenteModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

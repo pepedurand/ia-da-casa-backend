@@ -24,7 +24,8 @@
     "migration:revert": "npm run typeorm -- migration:revert",
     "migration:show": "npm run typeorm -- migration:show",
     "migration:create": "sh -c 'npm run typeorm:nods -- migration:create src/database/migrations/$1' --",
-    "migration:generate": "npm run typeorm -- migration:generate"
+    "migration:generate": "npm run typeorm -- migration:generate",
+    "seed:informacoes": "ts-node -r tsconfig-paths/register src/models/chat/seeder.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
