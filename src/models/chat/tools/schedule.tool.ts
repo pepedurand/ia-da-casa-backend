@@ -371,63 +371,62 @@ export class ScheduleTool {
         .toLowerCase()
         .trim();
 
-    // normaliza entrada: remove "-feira"/" feira", espaços extras e preposições comuns
-    let p = norm(periodo)
-      .replace(/-?feira\b/g, '') // "sexta-feira" -> "sexta"
-      .replace(/\b(na|no|de|da|do|pra|para|pro)\b/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    // 1) Normaliza, mas ainda NÃO remove preposições
+    const p0 = norm(periodo);
 
-    // sinônimos de fim de semana
-    const weekendSyn = new Set([
-      'fim de semana',
-      'final de semana',
-      'fds',
-      'fim-de-semana',
-      'final-de-semana',
-    ]);
-    if (weekendSyn.has(p)) {
-      return { diasIdx: [6, 0], labels: [dias[6], dias[0]] };
+    // 2) Detecta "fim/final de semana" com regex tolerante (com/sem "de", com/sem hífen) ou "fds"
+    const isWeekend = /\b(fim|final)[ -]?de?[ -]?semana\b|\bfds\b/.test(p0);
+    if (isWeekend) {
+      return { diasIdx: [6, 0], labels: [dias[6], dias[0]] }; // sábado e domingo
     }
 
-    // referenciais simples
+    // 3) Referenciais simples
     if (referencial) {
-      if (p === 'hoje') {
+      if (/\bhoje\b/.test(p0)) {
         const i = hoje.getDay();
         return { diasIdx: [i], labels: [dias[i]] };
       }
-      if (p === 'amanha' || p === 'amanhã') {
+      if (/\bamanha\b|\bamanhã\b/.test(p0)) {
         const i = (hoje.getDay() + 1) % 7;
         return { diasIdx: [i], labels: [dias[i]] };
       }
-      if (p === 'depois de amanha' || p === 'depois de amanhã') {
+      if (/\bdepois de amanha\b|\bdepois de amanhã\b/.test(p0)) {
         const i = (hoje.getDay() + 2) % 7;
         return { diasIdx: [i], labels: [dias[i]] };
       }
     }
 
-    // mapeia abreviações e variações: seg/2a, ter/3a, qua/4a, qui/5a, sex/6a, sab/7a
+    // 4) Agora sim: remove "-feira" e preposições para facilitar matching por token
+    const p = p0
+      .replace(/-?feira\b/g, '') // "sexta-feira" -> "sexta"
+      .replace(
+        /\b(na|no|de|da|do|pra|para|pro|nesse|neste|nesta|este|essa|nessa)\b/g,
+        ' ',
+      )
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // 5) Abreviações/variações por token: seg/2a, ter/3a, qua/4a, qui/5a, sex/6a, sab/7a, dom
     const aliases: Array<[RegExp, number]> = [
       [/\bdom(ingo)?\b/, 0],
       [/\bseg(unda)?\b|\b2a\b/, 1],
-      [/\bter(ca)?\b|\b3a\b/, 2], // "terca" já está sem acento pela norm()
+      [/\bter(ca)?\b|\b3a\b/, 2],
       [/\bqua(rta)?\b|\b4a\b/, 3],
       [/\bqui(nta)?\b|\b5a\b/, 4],
       [/\bsex(ta)?\b|\b6a\b/, 5],
       [/\bsab(ado)?\b|\b7a\b/, 6],
     ];
-
     for (const [re, idx] of aliases) {
       if (re.test(p)) {
         return { diasIdx: [idx], labels: [dias[idx]] };
       }
     }
 
-    // tentativa por igualdade literal (ex.: "sexta")
+    // 6) Igualdade literal (ex.: "sexta")
     const idx = dias.findIndex((d) => norm(d) === p);
     if (idx >= 0) return { diasIdx: [idx], labels: [dias[idx]] };
 
-    // fallback: hoje
+    // 7) Fallback: hoje
     const i = hoje.getDay();
     return { diasIdx: [i], labels: [dias[i]] };
   }

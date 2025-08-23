@@ -29,8 +29,6 @@ interface Informacoes {
   observacoes: string[];
 }
 
-const BUSINESS_TZ = process.env.BUSINESS_TZ || 'America/Sao_Paulo';
-
 export const horariosDeFuncionamento: HorariosDeFuncionamento[] = [
   { nome: DiasDaSemana.SEGUNDA, horarios: [{ inicio: '12:00', fim: '16:00' }] },
   { nome: DiasDaSemana.TERCA, horarios: [{ inicio: '12:00', fim: '16:00' }] },
