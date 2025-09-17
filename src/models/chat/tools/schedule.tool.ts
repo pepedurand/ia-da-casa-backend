@@ -13,6 +13,15 @@ type Args = {
 @Injectable()
 export class ScheduleTool {
   execute(args: Args, hoje: Date = new Date()): string {
+    console.log(args);
+    if (
+      args.visao_geral &&
+      (!args.data_ou_periodo || !args.periodo_generico) &&
+      (!args.informacao || !args.informacao_generica)
+    ) {
+      return this.compiladoGeral();
+    }
+
     if (
       args.data_ou_periodo &&
       (args.informacao_generica || !args.informacao)
@@ -33,20 +42,9 @@ export class ScheduleTool {
       return this.compiladoPeriodoEInformacaoEspecifica(args, hoje);
     }
 
-    if (
-      args.visao_geral ||
-      (!args.data_ou_periodo &&
-        !args.informacao &&
-        !args.informacao_generica &&
-        !args.periodo_generico)
-    ) {
-      return this.compiladoGeral();
-    }
-
     return this.compiladoGeral();
   }
 
-  /** === VISÃO GERAL === */
   private compiladoGeral(): string {
     const linhas: string[] = [];
     linhas.push(`Claro! Aqui vai um resumo geral do Bistrô da Casa 🍽️`);
