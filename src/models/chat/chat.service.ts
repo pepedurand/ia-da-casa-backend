@@ -12,8 +12,8 @@ export class ChatService {
     private readonly scheduleTool: ScheduleTool,
     private readonly configService: ConfigService,
   ) {
-    this.openai = new OpenAI({ 
-      apiKey: this.configService.get<string>('OPENAI_API_KEY') 
+    this.openai = new OpenAI({
+      apiKey: this.configService.get<string>('OPENAI_API_KEY'),
     });
   }
 
