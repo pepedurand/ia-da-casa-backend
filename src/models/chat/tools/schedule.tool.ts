@@ -112,6 +112,46 @@ export class ScheduleTool {
     const isTermoCardapio = (t: string) =>
       /\b(cardapio|menu|valores)\b/.test(t); // cobre "cardapio", "menu", "valores"
 
+    // === NOVA LÓGICA: Matching exato de frases primeiro ===
+    const informacaoCompleta = args.informacao
+      ? args.informacao
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/\p{Diacritic}/gu, '')
+          .trim()
+      : '';
+
+    // Tenta match exato de frases completas primeiro
+    let encontrouMatchExato = false;
+    for (const info of informacoes) {
+      for (const nome of info.nomes) {
+        const nomeNormalizado = nome
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/\p{Diacritic}/gu, '');
+
+        // Se a informação solicitada contém exatamente o nome da informação
+        if (informacaoCompleta.includes(nomeNormalizado)) {
+          if (!encontradosInfo.has(info.nomes[0])) {
+            encontradosInfo.add(info.nomes[0]);
+            linhas.push(...info.observacoes);
+            encontrouMatchExato = true;
+          }
+        }
+      }
+    }
+
+    // Se encontrou match exato, não precisa fazer busca por tokens individuais
+    if (encontrouMatchExato) {
+      // ✅ só pergunta pelo link se ainda não apareceu nenhum
+      const jaTemLink = linhas.some((l) => l.includes('linktr.ee/bitrodacasa'));
+      if (!jaTemLink) {
+        linhas.push(`Posso te enviar o link de reserva?`);
+      }
+      return linhas.join('\n');
+    }
+
+    // === LÓGICA ORIGINAL: busca por tokens individuais ===
     for (const termo of termos) {
       // tenta casar informacoes e programacao para o mesmo termo
       const info = informacoes.find((i) =>
@@ -275,70 +315,104 @@ export class ScheduleTool {
     const isTermoCardapio = (t: string) =>
       /\b(cardapio|menu|valores)\b/.test(t);
 
+    // === NOVA LÓGICA: Matching exato de frases primeiro ===
+    const informacaoCompleta = args.informacao
+      ? args.informacao
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/\p{Diacritic}/gu, '')
+          .trim()
+      : '';
+
     // 3) Para cada termo, priorizar:
     // - Se for "cardápio/menu/valores": MOSTRAR SÓ LINK (sem bloco de agenda "menu completo")
     // - Para outros (ex.: "fondue", "reservas"): puxar observações e/ou agenda dedicada
     const encontradosProg = new Set<string>();
     const encontradosInfo = new Set<string>();
 
-    for (const termo of termos) {
-      const normMatch = (s: string) =>
-        s
+    // Tenta match exato de frases completas primeiro
+    let encontrouMatchExato = false;
+    for (const info of informacoes) {
+      for (const nome of info.nomes) {
+        const nomeNormalizado = nome
           .toLowerCase()
           .normalize('NFD')
           .replace(/\p{Diacritic}/gu, '');
 
-      const info = informacoes.find((i) =>
-        i.nomes.some((n) => normMatch(n).includes(termo)),
-      );
-      const prog = programacao.find((p) =>
-        p.nomes.some((n) => normMatch(n).includes(termo)),
-      );
-
-      const termoEhCardapio = isTermoCardapio(termo);
-
-      // 3a) Cardápio: só link (se existir)
-      if (termoEhCardapio && info && !encontradosInfo.has(info.nomes[0])) {
-        encontradosInfo.add(info.nomes[0]);
-        linhas.push(...info.observacoes);
-        // NÃO criar bloco "Agenda completa" de "menu completo" aqui,
-        // pois o resumo do dia já mostrou se há "menu completo" nesse(s) dia(s).
-        continue; // pula para próximo termo
-      }
-
-      // 3b) Outros termos: exibir informações soltas (ex.: reservas)
-      if (info && !encontradosInfo.has(info.nomes[0])) {
-        encontradosInfo.add(info.nomes[0]);
-        linhas.push(...info.observacoes);
-      }
-
-      // 3c) Agenda dedicada do item solicitado (quando fizer sentido)
-      if (prog && !encontradosProg.has(prog.nomes[0])) {
-        // Evita criar "Agenda completa" para "menu completo" (já coberto no resumo)
-        const isMenuCompleto = prog.nomes.some((n) =>
-          normMatch(n).includes('menu completo'),
-        );
-        if (!termoEhCardapio && !isMenuCompleto) {
-          linhas.push('');
-          linhas.push(
-            `### ${this.capitalize(prog.nomes[0])} — Agenda completa`,
-          );
-          for (const d of prog.horarios) {
-            const faixa = this.formatFaixas(d.horarios);
-            linhas.push(`- **${this.capitalize(d.nome)}**: ${faixa}`);
+        // Se a informação solicitada contém exatamente o nome da informação
+        if (informacaoCompleta.includes(nomeNormalizado)) {
+          if (!encontradosInfo.has(info.nomes[0])) {
+            encontradosInfo.add(info.nomes[0]);
+            linhas.push(...info.observacoes);
+            encontrouMatchExato = true;
           }
-
-          // sinaliza se NÃO rola no(s) dia(s) do período
-          const diasDoItem = new Set(prog.horarios.map((h) => h.nome));
-          for (const labelDia of labels) {
-            if (!diasDoItem.has(labelDia as any)) {
-              linhas.push(`- **${this.capitalize(labelDia)}**: não acontece.`);
-            }
-          }
-
-          if (prog.descricao) linhas.push(prog.descricao);
         }
-        encontradosProg.add(prog.nomes[0]);
+      }
+    }
+
+    // Se não encontrou match exato, faz busca por tokens individuais
+    if (!encontrouMatchExato) {
+      for (const termo of termos) {
+        const normMatch = (s: string) =>
+          s
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/\p{Diacritic}/gu, '');
+
+        const info = informacoes.find((i) =>
+          i.nomes.some((n) => normMatch(n).includes(termo)),
+        );
+        const prog = programacao.find((p) =>
+          p.nomes.some((n) => normMatch(n).includes(termo)),
+        );
+
+        const termoEhCardapio = isTermoCardapio(termo);
+
+        // 3a) Cardápio: só link (se existir)
+        if (termoEhCardapio && info && !encontradosInfo.has(info.nomes[0])) {
+          encontradosInfo.add(info.nomes[0]);
+          linhas.push(...info.observacoes);
+          // NÃO criar bloco "Agenda completa" de "menu completo" aqui,
+          // pois o resumo do dia já mostrou se há "menu completo" nesse(s) dia(s).
+          continue; // pula para próximo termo
+        }
+
+        // 3b) Outros termos: exibir informações soltas (ex.: reservas)
+        if (info && !encontradosInfo.has(info.nomes[0])) {
+          encontradosInfo.add(info.nomes[0]);
+          linhas.push(...info.observacoes);
+        }
+
+        // 3c) Agenda dedicada do item solicitado (quando fizer sentido)
+        if (prog && !encontradosProg.has(prog.nomes[0])) {
+          // Evita criar "Agenda completa" para "menu completo" (já coberto no resumo)
+          const isMenuCompleto = prog.nomes.some((n) =>
+            normMatch(n).includes('menu completo'),
+          );
+          if (!termoEhCardapio && !isMenuCompleto) {
+            linhas.push('');
+            linhas.push(
+              `### ${this.capitalize(prog.nomes[0])} — Agenda completa`,
+            );
+            for (const d of prog.horarios) {
+              const faixa = this.formatFaixas(d.horarios);
+              linhas.push(`- **${this.capitalize(d.nome)}**: ${faixa}`);
+            }
+
+            // sinaliza se NÃO rola no(s) dia(s) do período
+            const diasDoItem = new Set(prog.horarios.map((h) => h.nome));
+            for (const labelDia of labels) {
+              if (!diasDoItem.has(labelDia as any)) {
+                linhas.push(
+                  `- **${this.capitalize(labelDia)}**: não acontece.`,
+                );
+              }
+            }
+
+            if (prog.descricao) linhas.push(prog.descricao);
+          }
+          encontradosProg.add(prog.nomes[0]);
+        }
       }
     }
 
