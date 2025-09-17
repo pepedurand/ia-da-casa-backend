@@ -102,10 +102,6 @@ export class ChatService {
           content:
             'Reescreva em PT-BR natural, como uma atendente simpática do Restaurante Bistrô da Casa. Sempre que a informação vier repetida, compile-as, e conecte os fatos com coesão. Se os dias da semana forem uma sequencia, use de segunda a sexta por exemplo.',
         },
-        {
-          role: 'system',
-          content: 'Você fala de forma natural, clara e objetiva.',
-        },
         { role: 'user', content: textoBase },
       ],
     });
