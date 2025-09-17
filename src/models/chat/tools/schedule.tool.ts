@@ -14,6 +14,22 @@ type Args = {
 export class ScheduleTool {
   execute(args: Args, hoje: Date = new Date()): string {
     console.log(args);
+
+    // Tratamento especial para perguntas sobre horário de funcionamento geral
+    const isHorarioFuncionamento =
+      args.informacao &&
+      (args.informacao.toLowerCase().includes('horário') ||
+        args.informacao.toLowerCase().includes('horario') ||
+        args.informacao.toLowerCase().includes('funcionamento'));
+
+    if (
+      args.visao_geral &&
+      isHorarioFuncionamento &&
+      args.informacao_generica
+    ) {
+      return this.compiladoGeral();
+    }
+
     if (
       args.visao_geral &&
       (!args.data_ou_periodo || !args.periodo_generico) &&

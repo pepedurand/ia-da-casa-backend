@@ -283,10 +283,10 @@ export const informacoes: Informacoes[] = [
       'reserva online',
     ],
     observacoes: [
-      'Reserve em: https://linktr.ee/bitrodacasa → “Reserva online”.',
+      'Reserve em: https://linktr.ee/bitrodacasa → "Reserva online".',
       'Se não aparecer data no sistema, é porque não há disponibilidade.',
       'Atendemos sem reserva também, mas a disponibilidade pode ser limitada.',
-      'Para grupos grandes (+8 pessoas), use “Reservas para grupos grandes” no Linktree.',
+      'Para grupos grandes (+8 pessoas), use "Reservas para grupos grandes" no Linktree.',
       'Sugerimos chegar alguns minutos antes do horário reservado.',
     ],
   },
@@ -321,7 +321,7 @@ export const informacoes: Informacoes[] = [
     ],
     observacoes: [
       'Metrô: estação Glória + 10 minutos a pé.',
-      'Também encontra nos apps buscando por “Bistrô da Casa” ou “Casa da Glória”.',
+      'Também encontra nos apps buscando por "Bistrô da Casa" ou "Casa da Glória".',
       'Táxi e apps de corrida atendem bem a região.',
     ],
   },
@@ -456,7 +456,7 @@ export const informacoes: Informacoes[] = [
     ],
     observacoes: [
       'Temos opções vegetarianas e veganas — confira no cardápio digital.',
-      'Para ver as opções, acesse o link e selecione “Cardápio digital”.',
+      'Para ver as opções, acesse o link e selecione "Cardápio digital".',
       'Avise à equipe em caso de restrições alimentares para orientarmos melhor.',
     ],
   },
