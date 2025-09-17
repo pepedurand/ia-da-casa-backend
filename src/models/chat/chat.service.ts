@@ -1,13 +1,21 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { ResponseInput, Tool } from 'openai/resources/responses/responses';
 import { ScheduleTool } from './tools/schedule.tool';
 
 @Injectable()
 export class ChatService {
-  private openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  private openai: OpenAI;
 
-  constructor(private readonly scheduleTool: ScheduleTool) {}
+  constructor(
+    private readonly scheduleTool: ScheduleTool,
+    private readonly configService: ConfigService,
+  ) {
+    this.openai = new OpenAI({ 
+      apiKey: this.configService.get<string>('OPENAI_API_KEY') 
+    });
+  }
 
   private tools: Tool[] = [
     {
